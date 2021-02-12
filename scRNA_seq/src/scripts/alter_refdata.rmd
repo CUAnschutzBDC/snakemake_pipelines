@@ -1,0 +1,65 @@
+---
+title: "Make reference"
+author: "Kristen Wells"
+date: "1/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+Sys.setenv(RETICULATE_PYTHON = "/opt/anaconda3/envs/scanpy/bin/python")
+library("reticulate")
+library("ggplot2")
+library("SingleCellExperiment")
+library("scater")
+library("Seurat")
+library("dplyr")
+
+```
+
+
+
+```{python}
+import scanpy as sc
+import pandas
+```
+
+```{python}
+data_dir = "/Users/wellskr/Documents/Analysis/Holger_Russ/mtec_organoid_multi/files/thymus_annotated_matrix_files/"
+
+fig1_data = data_dir + 'HTA08.v01.A05.Science_human_fig1.h5ad'
+hsc_data = data_dir + 'HTA08.v01.A05.Science_human_hsc.h5ad'
+tcell_data = data_dir + 'HTA08.v01.A06.Science_human_tcells.h5ad'
+human_epi_data = data_dir + 'HTA08.v01.A05.Science_human_epi.h5ad'
+mouse_stromal_data = data_dir + 'HTA08.v02.A04.Science_mouse_stromal.h5ad'
+mouse_total_data = data_dir + 'HTA08.v02.A04.Science_mouse_total.h5ad'
+fig1 = sc.read(fig1_data)
+
+fig1
+
+# Write the genes to a file because I'm having a hard time loading them directly
+# because of duplicate names
+genes_file = data_dir + "all_cell_genes.csv"
+fig1.var.to_csv(genes_file)
+```
+
+
+```{r}
+genes <- read.csv(paste0(py$data_dir, "all_cell_genes.csv"), header = TRUE)
+genes$unique <- make.names(genes$index, unique = TRUE)
+
+sce <- SingleCellExperiment(
+    assays      = list(logcounts = t(py$fig1$X)),
+    colData     = py$fig1$obs,
+    rowData     = genes$unique,
+    reducedDims = list(umap = py$fig1$obsm["X_umap"])
+)
+
+saveRDS(sce, file = paste0(py$data_dir, "sce_object.rda"))
+
+```

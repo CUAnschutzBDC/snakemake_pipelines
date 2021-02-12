@@ -1,0 +1,22 @@
+""" Snake pipeline for separating fastq files """
+
+# Configure shell for all rules 
+shell.executable("/bin/bash")
+shell.prefix("set -o nounset -o pipefail -o errexit -x; ")
+import subprocess # check if necessary
+import glob
+import os 
+import re
+
+# Parameters from config.yaml
+DATA_DIR = config["DATA_DIR"]
+SAMPLES  = config["SAMPLES"]
+
+# Final output files
+rule all:
+    input:
+        # subset_fastq
+        expand("{sample}_subset_fastq", sample = SAMPLES)
+
+# Snakes to run
+include: "src/rules/subset_fastq.snake"

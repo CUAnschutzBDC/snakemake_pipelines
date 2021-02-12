@@ -1,0 +1,7 @@
+# Path to file containing information about the fastqs to separate
+DATA_DIR:
+  "raw_data"
+
+SAMPLES:
+  - "KO_1_NonTreatment"
+  - "KO_2_NonTreatment"

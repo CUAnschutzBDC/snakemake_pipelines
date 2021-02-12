@@ -1,0 +1,1136 @@
+---
+title: "PTPN Knockout"
+author: "Kristen Wells"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    highlight: "tango"
+    df_print: "paged"
+    code_folding: "hide"
+    self_contained: true
+params:
+  genome: "GRCm38"
+  counts: "results/PTPN_KO_countTable_no_trim.txt"
+  fastqc: "results/fastqc_summary.tsv"
+  star_stats: "results/star_summary_no_trim.tsv"
+  output_dir: "results/R_analysis"
+  sample_info: "files/sample_info.csv"
+---
+```{r "Load packages and set options", include = F}
+install_packages <- function(install_list, name_list = NULL, 
+                             install_cmd = "utils::install.packages", ...) {
+  
+  # If using devtools::install_github(), the package name will be different 
+  # from the repository name in install_list
+  if (is.null(name_list)) {
+    name_list <- install_list
+  }
+  
+  # Install packages
+  for (i in 1:length(install_list)) {
+    # require() returns TRUE invisibly if it was able to load package
+    if (!require(name_list[i], character.only = T)) {
+      
+      install_pkg <- strsplit(install_cmd, "::")[[1]][1]
+      
+      if (!require(install_pkg, character.only = T)) {
+        install.packages(install_pkg, dependencies = T, ...)
+        require(install_pkg)
+      }
+      
+      install_cmd <- paste0(install_cmd, "(install_list[i], ...)")
+      eval(parse(text = install_cmd))
+      
+      require(name_list[i], character.only = T)
+    }
+  }
+}
+
+# Install CRAN packages
+install_packages(c(
+  "knitr",    "BiocManager",
+  "cowplot",  "tidyverse", 
+  "Matrix",   "pheatmap",
+  "ggrepel",  "devtools", 
+  "gprofiler2", "viridis",
+  "RColorBrewer", "ashr",
+  "apeglm"
+))
+
+# Install Bioconductor packages
+install_packages(c(
+  "DESeq2", "pathview",
+  "KEGGREST", "org.Hs.eg.db"
+), install_cmd = "BiocManager::install")
+
+# Set default chunk options
+opts_chunk$set(
+  message = F, 
+  warning = F,
+  comment = ""
+)
+```
+
+```{r "Load Functions and Theme"}
+#############
+# Functions # 
+#############
+
+# Create a PCA Plot
+# Make a PCA plot
+plot_pca <- function(vsd, group_by){
+  pcaData <- plotPCA(vsd, intgroup = group_by, returnData = T)
+    colnames(pcaData)[3] <- "group_by"
+    percentVar <- round(100 * attr(pcaData, "percentVar"))
+    pca_plot <- ggplot(data = pcaData,
+                       mapping = aes(x = PC1,
+                                     y = PC2,
+                                     color = group_by)) +
+    geom_point(size = 3) +
+    xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+    ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+    labs(color = group_by) +
+    coord_fixed() +
+    scale_color_brewer(palette = "Set1")
+return(pca_plot)
+}
+
+
+# Function to determine sample distances
+get_distances <- function(vsd){
+  sampleDists <- dist(t(assay(vsd)))
+  sampleDistMatrix <- as.matrix(sampleDists)
+  colnames(sampleDistMatrix) <- NULL
+  colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+  dist_map <- pheatmap(sampleDistMatrix,
+                       clustering_distance_rows=sampleDists,
+                       clustering_distance_cols=sampleDists,
+                       col=colors)
+  return(dist_map)
+}
+
+# Function to return sig genes for a comparison
+get_de <- function(object, column, var1, var2, write_csv = F,
+                   p_value = 0.05, lfc = 0.5,
+                   maplot = TRUE){
+  res <- DESeq2::results(object, contrast = c(column, var1, var2))
+  res <- DESeq2::lfcShrink(object, contrast = c(column, var1, var2),
+                           res = res, type = "ashr")
+  if(maplot){
+    plotMA(res, main = paste0(var1, " vs ", var2))
+  }
+  resOrdered <- res[order(res$pvalue), ]
+  sigGenes <- resOrdered[!is.na(resOrdered$padj), ]
+  sigGenes <- sigGenes[sigGenes$padj < p_value, ]
+  sigGenes <- sigGenes[abs(sigGenes$log2FoldChange) > lfc, ]
+  # Add columns for gene id and ens id
+  sigGenes_colnames <- colnames(sigGenes)
+  sigGenes$gene_name <- sub("_ENSMUSG.*", "", rownames(sigGenes))
+  sigGenes$ens_id <- sub(".*_ENSMUSG", "ENSMUSG", rownames(sigGenes))
+  # Place the new columns at the front
+  sigGenes <- sigGenes[ , c("gene_name", "ens_id", sigGenes_colnames)]
+  if(write_csv){
+    file_name <- paste0(var1, "_vs_", var2, ".csv")
+    write.csv(sigGenes, file = file.path(base_path, "DE_files", file_name),
+              row.names = FALSE)
+  }
+  return(sigGenes)
+}
+
+# Make a heatmap
+# Run gprofiler
+```
+
+
+
+
+
+
+## Background
+This documents the analysis of the effect of cytokine treatment on PTPN2 KO mice.
+This document aims to analyze differences between PTPN2 KO and WT mice in their
+response to cytokine treatment.
+
+```{r}
+# Load in the files
+
+# First change the working directory to be the main directory of the snakefile
+setwd("../../../")
+
+###############
+# Count table #
+###############
+
+# Read in the count table
+count_table <- read.table(params$counts, sep = "\t", row.names = 1, header = T)
+
+################
+# Sample table #
+################
+
+# Read in the sample table
+sample_table <- read.table(params$sample_info, sep = ",", header = T,
+                           row.names = 1)
+
+# Ensure the count table and sample table are in the same order
+count_table <- count_table[ , rownames(sample_table)]
+# A quick check to make sure that worked
+all(rownames(sample_table) == colnames(count_table))
+
+########
+# Star #
+########
+
+# Read in star stats
+star_stats <- read.table(params$star_stats, sep = "\t", row.names = 1,
+                         header = T)
+
+# Filter for mapping % and total read counts
+star_stats <- star_stats[grepl(
+  "%|Uniquely mapped reads|mapped to multiple loci",
+  rownames(star_stats)), ]
+
+star_stats <- star_stats[!grepl(
+  "^Mismatch|chimeric", rownames(star_stats)), ]
+
+# Pull out all sample names
+samples <- colnames(star_stats)
+
+# Make a column of metrics
+star_stats$metric <- rownames(star_stats)
+
+# Make into long form for ggplot
+star_stats_long <- gather(star_stats, key = "Sample", value = "value",
+                          all_of(samples))
+
+
+# Add column for value type
+star_stats_long <- star_stats_long %>%
+  mutate(
+    value = as.numeric(str_remove(value, "%")),
+    val_type = ifelse(grepl("%", metric),
+                      "pct", "int")
+  )
+
+# Pull out read counts
+# Calculate median library size
+read_counts <- star_stats_long %>%
+  filter(grepl("mapped reads number", metric)) %>%
+  mutate(value = round(value / 1000000)) %>%
+  mutate(value = str_c(value, " million"))
+
+##########
+# FastQC #
+##########
+
+# Load in fastqc results
+fastqc_summary <- read.table(params$fastqc, sep = "\t")
+
+# Change the colnames
+colnames(fastqc_summary) <- c("Result", "Test", "Sample")
+
+# Update sample names
+fastqc_summary$Sample <- sub("_S[0-9]*_L[0-9]*_", "", fastqc_summary$Sample)
+fastqc_summary$Sample <- sub("_001.fastq.gz", "", fastqc_summary$Sample)
+
+
+
+```
+
+# Quality Control {.tabset}
+
+## FastQC Summary
+`FastQC` was used to assess the quality of each fastq file. A summary of the results is shown below, the overall library quality was **`r params$library_quality`**.
+```{r "Create fastqc summary", fig.width = 8.5, fig.height = 3}
+fastqc_plot <- ggplot(data = fastqc_summary,
+                      mapping = aes(x = Sample,
+                                    y = Test,
+                                    fill = Result)) +
+  geom_tile(color = "white", size = 0.5) +
+  scale_fill_manual(values = c("#e31a1c", "#238443", "#ec7014")) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 8),
+    axis.title   = element_blank(),
+    axis.text    = element_text(size = 8),
+    axis.text.x  = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  )
+
+fastqc_plot
+```
+
+
+## Alignment Summary
+Reads were aligned to the `r params$genome` genome using the `STAR` RNA-seq aligner. A summary of the results is shown below, the library size is displayed on each bar. The median library size was `r median_size` million reads and the median alignment rate was `r median_rate`. Overall, the alignment rate was **`r alignment_qual`**. 
+```{r "Create alignment summary", fig.width = 8.5, fig.height = 3}
+
+# Plot alignment stats
+star_stats_long_pct <- star_stats_long %>%
+  filter(val_type == "pct") %>%
+  
+  # Add median rates to metric label
+  mutate(
+    metric = str_remove(metric, "% of reads | reads %"),
+    metric = str_to_sentence(metric)
+  ) %>%
+  arrange(value) %>%
+  mutate(metric = fct_inorder(metric))
+  
+# Plot STAR alignment stats
+star_plot <- ggplot(data = star_stats_long_pct,
+                    mapping = aes(x = Sample,
+                                  y = value,
+                                  fill = metric)) +
+  geom_bar(stat = "identity", color = "white", size = 0.5) +
+  
+  # Label bars with library size
+  geom_text(
+    data = read_counts, 
+    aes(Sample, 50, label = value),
+    show.legend = F,
+    inherit.aes = F,
+    color = "white", 
+    angle = 90
+  ) +
+  
+  scale_fill_manual(
+    values = c("#737373", "#8c6bb1", "#ec7014",
+                            "#e31a1c", "#238443", "#225ea8"),
+    guide  = guide_legend(reverse = T)
+  ) +
+  scale_y_continuous(labels = function(x) {str_c(x, "%")}) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 8),
+    axis.title   = element_blank(),
+    axis.text    = element_text(size = 8),
+    axis.text.x  = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  )
+
+star_plot
+
+```
+
+
+## PCA
+
+```{r "Run DESeq2 and create PCA plot", fig.width = 6, fig.height = 4}
+# This makes a DESeq2 object where the count data is our count matrix and the colData is our sample data. I am currently making the design based on "group" but we can change this if necessary
+dds <- DESeqDataSetFromMatrix(countData = count_table,
+                              colData = sample_table,
+                              design = ~group)
+# Here we get rid of all the genes that are not expressed
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds <- DESeq(dds)
+# This transforms the counts to have constant variance. This helps ensue that highly or lowly expressed genes will not contribute too much for the PCA or clustering analysis
+vsd <- vst(dds, blind = F)
+
+plot_pca(vsd, group_by = "group")
+```
+
+
+## Sample Distances
+Correlations between samples was determined to further assess similarities between samples. Biological replicates should cluster together. Samples that are more similar to each other have values closer to 0. 
+
+```{r "Determine distance between samples", fig.width= 6, fig.height = 4}
+# This determines distance between samples.
+get_distances(vsd)
+```
+
+## Differential gene expression
+
+First, let's make sure a folder exists that we can save DE tables into
+```{r}
+ifelse(!dir.exists(file.path(base_path, "DE_files")),
+       dir.create(file.path(base_path, "DE_files")), FALSE)
+```
+
+Now that we have done some basic quality control we can perform differential gene expression.
+
+First we can analyze across all genotypes by using the liklihood ratio test.
+
+```{r}
+dds_lrt <- DESeq(dds, test = "LRT", reduced = ~1)
+```
+
+Now we can find genes differentially expressed across all genotypes
+
+```{r}
+res_LRT <- results(dds_lrt)
+# Keep only significant p_values
+res_LRT <- res_LRT[!is.na(res_LRT$padj), ]
+# We set a high p-value cutoff because we can't set a lfc cutoff
+res_LRT <- res_LRT[res_LRT$padj < 0.001, ]
+sig_genes <- rownames(res_LRT)
+res_colnames <- colnames(res_LRT)
+res_LRT$gene_name <- sub("_ENSMUSG.*", "", rownames(res_LRT))
+res_LRT$ens_id <- sub(".*_ENSMUSG", "ENSMUSG", rownames(res_LRT))
+# Place the new columns at the front
+res_LRT <- res_LRT[ , c("gene_name", "ens_id", res_colnames)]
+write.csv(res_LRT, file = file.path(base_path,
+                                 "DE_files/LRT_across_genotypes.csv"),
+          row.names = FALSE)
+```
+
+Now we can do the pairwise-tests
+
+Here I like to write a function so that I can easily perform many different comparisons
+```{r}
+# Function to return sig genes for a comparison
+get_de <- function(object, column, var1, var2, write_csv = F,
+                   p_value = 0.05, lfc = 0.5,
+                   maplot = TRUE){
+  res <- DESeq2::results(object, contrast = c(column, var1, var2))
+  res <- DESeq2::lfcShrink(object, contrast = c(column, var1, var2),
+                           res = res, type = "ashr")
+  if(maplot){
+    plotMA(res, main = paste0(var1, " vs ", var2))
+  }
+  resOrdered <- res[order(res$pvalue), ]
+  sigGenes <- resOrdered[!is.na(resOrdered$padj), ]
+  sigGenes <- sigGenes[sigGenes$padj < p_value, ]
+  sigGenes <- sigGenes[abs(sigGenes$log2FoldChange) > lfc, ]
+  # Add columns for gene id and ens id
+  sigGenes_colnames <- colnames(sigGenes)
+  sigGenes$gene_name <- sub("_ENSMUSG.*", "", rownames(sigGenes))
+  sigGenes$ens_id <- sub(".*_ENSMUSG", "ENSMUSG", rownames(sigGenes))
+  # Place the new columns at the front
+  sigGenes <- sigGenes[ , c("gene_name", "ens_id", sigGenes_colnames)]
+  if(write_csv){
+    file_name <- paste0(var1, "_vs_", var2, ".csv")
+    write.csv(sigGenes, file = file.path(base_path, "DE_files", file_name),
+              row.names = FALSE)
+  }
+  return(sigGenes)
+}
+```
+
+Now we can start running some comparisons. Let's first compare everything to the WT.
+
+The output of the comparison will be a table with negative and positive log fold values and adjusted p-values. For the log fold changes, the positive and negative values are based on the first genotype I gave to the function (which is also the first genotype in the name of the file). For example, if the file is named Gata6_vs_Neurog3cre_Gata6, any positive log fold change values are genes that are higher in the Gata6 mice than in the Neurog3cre_Gata6 mice and any negative values are genes that are higher in the Neurog3cre_Gata6 mice than in the Gata6 mice.
+
+I have changed the function slightly. It now does a better job of accounting for low-expressed genes. These tend to have an outsized prsence in differential gene expession because a small change has a very large log fold change. It doesn't appear that this dramatically changed the output that you were interested in.
+
+I make a list of all the comparisons using sapply. I'm happy to explain how sapply works, but basically it will run through a list (compare_against here) and for each run through it will run the function (get_de). You can pass any variables to the function and and the variable from the list becomes x (or whatever you have in the parenthesis following the function). It will then return a list where each item in the list is the return value from one run through of the function. The item in the list is named by the value that was passed from compare_against.
+
+```{r}
+if (adjust_p_for_comparisons){
+  # This assumes you are doing all pairwise testing and will perform multiple testing correction
+  number_genotypes <- length(levels(dds$Genotype_R))
+  total_comparisons <- sum(number_genotypes * (number_genotypes - 1)) / 2
+} else {
+  total_comparisons <- 1
+}
+compare_to <- "Neurog3cre"
+compare_against <- c("Gata6", "Neurog3cre_RARdn", "Neurog3cre_Gata6",
+                     "Neurog3cre_RARdn_Gata6", "Neurog3cre_Gata4_Gata6_RARdn")
+all_sig_wt <- sapply(compare_against,
+                  function(x) get_de(dds, "Genotype_R",compare_to, x,
+                                     write_csv = T))
+```
+
+
+We can now repeat comparing everything to Gata6 fl/fl 
+
+```{r}
+compare_to <- "Gata6"
+compare_against <- c("Neurog3cre_RARdn", "Neurog3cre_Gata6",
+                     "Neurog3cre_RARdn_Gata6", "Neurog3cre_Gata4_Gata6_RARdn")
+all_sig_ctl <- sapply(compare_against,
+                  function(x) get_de(dds, "Genotype_R",compare_to, x,
+                                     write_csv = T))
+```
+
+Same with RARdn fl/fl + Neurog3cre
+
+```{r}
+compare_to <- "Neurog3cre_RARdn"
+compare_against <- c("Neurog3cre_Gata6", "Neurog3cre_RARdn_Gata6",
+                     "Neurog3cre_Gata4_Gata6_RARdn")
+all_sig_rardn <- sapply(compare_against,
+                  function(x) get_de(dds, "Genotype_R",compare_to, x,
+                                     write_csv = T))
+```
+
+
+And with Gata6 fl/fl + Neurog3cre
+
+```{r}
+compare_to <- "Neurog3cre_Gata6"
+compare_against <- c("Neurog3cre_RARdn_Gata6",
+                     "Neurog3cre_Gata4_Gata6_RARdn")
+all_sig_gata6 <- sapply(compare_against,
+                  function(x) get_de(dds, "Genotype_R",compare_to, x,
+                                     write_csv = T))
+```
+
+And with the DKO of RARdn and Gata6
+
+```{r}
+compare_to <- "Neurog3cre_RARdn_Gata6"
+compare_against <- c("Neurog3cre_Gata4_Gata6_RARdn")
+all_sig_dko <- sapply(compare_against,
+                  function(x) get_de(dds, "Genotype_R",compare_to, x,
+                                     write_csv = T))
+```
+
+## Heatmaps
+Again, we will check to make sure an output directory exists
+```{r}
+ifelse(!dir.exists(file.path(base_path, "images")),
+       dir.create(file.path(base_path, "images")), FALSE)
+# Let's also create a subdirectory for heatmaps
+ifelse(!dir.exists(file.path(base_path, "images", "heatmaps")),
+       dir.create(file.path(base_path, "images", "heatmaps")), FALSE)
+```
+
+We can also make heatmaps of the comparisons.
+
+Here I will start with heatmaps just for the CTL vs Gata6 KO, CTL vs RARdn KO, and CTL vs RARdn/Gata6 DKO
+
+```{r heatmap1, fig.height = 10, fig.width = 10}
+# First make a "col data" data frame. This is just telling pheatmap what you want to use to color the columns. This will work for all the heatmas.
+df <- as.data.frame(colData(dds)[,c("Genotype_R")])
+colnames(df) <- "Genotype_R"
+rownames(df) <- rownames(colData(dds))
+# Pull out DE genes from the test we ran earlier, start with Gata6 KO
+genes <- rownames(all_sig_ctl$Neurog3cre_Gata6)
+color_genotype <- brewer.pal(6, "Set1")
+names(color_genotype) <- levels(dds$Genotype_R)
+coloring <- list(Genotype_R = color_genotype)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# I really like the color palette that is part of the ArchR package (an incredible package for analyzing scATAC-seq data) for heatmaps.
+# I am taking a color palette from ArchR
+blueYellow <- c("#352A86", "#343DAE", "#0262E0", "#1389D2", "#2DB7A3",
+	"#A5BE6A", "#F8BA43", "#F6DA23", "#F8FA0D") 
+palOut <- colorRampPalette(blueYellow)(256)
+# Here we make the heatmap
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+                    cluster_cols = TRUE, show_rownames = TRUE,
+                    show_colnames = TRUE, annotation_col = df,
+                    annotation_colors = coloring, color = blueYellow,
+        border_color = NA, clustering_method = "complete")
+```
+
+We can also save the plot
+
+```{r}
+pdf(file.path(base_path, "images", "heatmaps",
+              "heatmap_Gata6_vs_Neurog3cre_Gata6.pdf"),
+    width = 10, height = 10)
+print(heatmap)
+dev.off()
+```
+
+We can make a heatmap for the RARdn vs the ctl as well. We need to remake the dataframe containing the DE genes, but otherwise we can reuse what we made previously
+
+```{r heatmap2, fig.height = 45, fig.width = 10}
+genes <- rownames(all_sig_ctl$Neurog3cre_RARdn)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# Here we make the heatmap
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+                    cluster_cols = TRUE, show_rownames = TRUE,
+                    show_colnames = TRUE, annotation_col = df,
+                    annotation_colors = coloring, color = blueYellow,
+        border_color = NA, clustering_method = "complete")
+```
+
+
+We can also save the plot
+
+```{r}
+pdf(file.path(base_path, "images", "heatmaps",
+              "heatmap_Gata6_vs_Neurog3cre_RARdn.pdf"),
+    width = 10, height = 45)
+print(heatmap)
+dev.off()
+```
+
+```{r heatmap3, fig.height = 30, fig.width = 10}
+genes <- rownames(all_sig_ctl$Neurog3cre_RARdn_Gata6)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# Here we make the heatmap
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+                    cluster_cols = TRUE, show_rownames = TRUE,
+                    show_colnames = TRUE, annotation_col = df,
+                    annotation_colors = coloring, color = blueYellow,
+        border_color = NA, clustering_method = "complete")
+```
+
+We can also save the plot
+
+```{r}
+pdf(file.path(base_path, "images", "heatmaps",
+           "heatmap_Gata6_vs_Neurog3cre_RARdn_Gata6.pdf"),
+    width = 10, height = 30)
+print(heatmap)
+dev.off()
+```
+
+
+For the other comparisons I'll just save the plot so this files doesn't get too crazy.
+
+```{r}
+genes <- rownames(all_sig_gata6$Neurog3cre_RARdn_Gata6)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# Here we make the heatmap
+pdf(file.path(base_path, "images", "heatmaps",
+              "heatmap_Neurog3cre_Gata6_vs_Neurog3cre_RARdn_Gata6.pdf"),
+    width = 10, height = 12)
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+         cluster_cols = TRUE, show_rownames = TRUE,
+         show_colnames = TRUE, annotation_col = df,
+         annotation_colors = coloring, color = blueYellow,
+         border_color = NA, clustering_method = "complete")
+print(heatmap)
+dev.off()
+```
+
+```{r}
+genes <- rownames(all_sig_gata6$Neurog3cre_Gata4_Gata6_RARdn)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# Here we make the heatmap
+pdf(file.path(base_path, "images", "heatmaps", 
+             "heatmap_Neurog3cre_Gata6_vs_Neurog3cre_Gata4_RARdn_Gata6.pdf"),
+    width = 10, height = 30)
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+         cluster_cols = TRUE, show_rownames = TRUE,
+         show_colnames = TRUE, annotation_col = df,
+         annotation_colors = coloring, color = blueYellow,
+         border_color = NA, clustering_method = "complete")
+print(heatmap)
+dev.off()
+```
+
+```{r}
+genes <- rownames(all_sig_rardn$Neurog3cre_Gata6)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# Here we make the heatmap
+pdf(file.path(base_path, "images", "heatmaps",
+              "heatmap_Neurog3cre_RARdn_vs_Neurog3cre_Gata6.pdf"),
+    width = 10, height = 45)
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+         cluster_cols = TRUE, show_rownames = TRUE,
+         show_colnames = TRUE, annotation_col = df,
+         annotation_colors = coloring, color = blueYellow,
+         border_color = NA, clustering_method = "complete")
+print(heatmap)
+dev.off()
+```
+
+```{r}
+genes <- rownames(all_sig_rardn$Neurog3cre_RARdn_Gata6)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# Here we make the heatmap
+pdf(file.path(base_path, "images", "heatmaps",
+              "heatmap_Neurog3cre_RARdn_vs_Neurog3cre_RARdn_Gata6.pdf"),
+    width = 10, height = 150)
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+         cluster_cols = TRUE, show_rownames = TRUE,
+         show_colnames = TRUE, annotation_col = df,
+         annotation_colors = coloring, color = blueYellow,
+         border_color = NA, clustering_method = "complete")
+print(heatmap)
+dev.off()
+```
+
+```{r}
+genes <- rownames(all_sig_rardn$Neurog3cre_Gata4_Gata6_RARdn)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# Here we make the heatmap
+pdf(file.path(base_path, "images", "heatmaps",
+              "heatmap_Neurog3cre_Gata6_vs_Neurog3cre_Gata4_ RARdn_Gata6.pdf"),
+    width = 10, height = 150)
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+         cluster_cols = TRUE, show_rownames = TRUE,
+         show_colnames = TRUE, annotation_col = df,
+         annotation_colors = coloring, color = blueYellow,
+         border_color = NA, clustering_method = "complete")
+print(heatmap)
+dev.off()
+```
+
+```{r}
+genes <- rownames(all_sig_dko$Neurog3cre_Gata4_Gata6_RARdn)
+heatmap_df <- assay(vsd)[genes,]
+# Heatmaps are always mean cenetered. Meaning the value shown is actually the expression value of the sample minus the mean. This command centers the dataframe so it can be plotted. When it isn't centered it is very hard to see any trends because all genes have very different expression levels.
+heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+# Here we make the heatmap
+pdf(file.path(base_path, "images", "heatmaps",
+       "heatmap_Neurog3cre_Gata6_RARdn_vs_Neurog3cre_Gata4_RARdn_Gata6.pdf"),
+    width = 10, height = 8)
+heatmap <- pheatmap(heatmap_scale, cluster_rows = TRUE,
+         cluster_cols = TRUE, show_rownames = TRUE,
+         show_colnames = TRUE, annotation_col = df,
+         annotation_colors = coloring, color = blueYellow,
+         border_color = NA, clustering_method = "complete")
+print(heatmap)
+dev.off()
+```
+
+## Gene expression plots
+
+We can also plot the expression of a couple of key genes across all samples.
+
+First I need to get a list of only gene names (the current list is gene names and Ensembl IDs)
+
+Again, let's make a folder
+```{r}
+ifelse(!dir.exists(file.path(base_path, "images", "gene_plots")),
+       dir.create(file.path(base_path, "images", "gene_plots")), FALSE)
+```
+
+```{r}
+all_gene_names <- rownames(dds)
+all_gene_ids <- sub("_ENSMUSG.*", "", all_gene_names)
+```
+
+Now we can write a function that is able to run through all of your genes of interest and plot it across all samples. We can definitely add any genes that you want here.
+
+```{r}
+plot_genes <- function(gene_id, gene_id_list, deseq_obj,
+                       intgroup = "Genotype_R", plot_ggplot = TRUE,
+                       color = NULL, return_data = TRUE,
+                       print = TRUE, save_path = NULL){
+  # Locate the index of the gene of interest
+  index <- grep(paste0("^", gene_id, "$"), gene_id_list)
+  if(length(index) == 0){
+    print(paste0(gene_id, " not in deseq object"))
+    return(NULL)
+  } else if(length(index == 1)) {
+    counts_plot <- make_plots(index = index, deseq_obj = deseq_obj,
+                              intgroup = intgroup, plot_ggplot = plot_ggplot,
+                              color = color, return_data = return_data,
+                              print = print, save_path = save_path)
+    return(counts_plot)
+  } else {
+    # This is in case a gene has two ensembl values
+    plot_list <- lapply(index, function(x) make_plots(index = x,
+                                                     deseq_obj = deseq_obj,
+                                                     intgroup = intgroup,
+                                                     plot_ggplot = plot_ggplot,
+                                                     color = color, 
+                                                     return_data = return_data,
+                                                     print = print,
+                                                     save_path = save_path))
+    return(plot_list)
+  }
+}
+make_plots <- function(index, deseq_obj, intgroup, plot_ggplot,
+                       color, return_data, print, save_path){
+  gene_name <- rownames(deseq_obj)[index]
+  counts_plot <- DESeq2::plotCounts(deseq_obj, gene = gene_name,
+                                    intgroup = intgroup,
+                                    returnData = TRUE)
+  if(plot_ggplot){
+    if(is.null(color)){
+      color <- brewer.pal(length(levels(dds[[integroup]])), "Set1")
+    }
+    colnames(counts_plot) <- c("count", "Group")
+    ggplot_counts_plot <- ggplot2::ggplot(counts_plot,
+                                          ggplot2::aes(x = Group,
+                                                       y = count)) +
+      ggplot2::geom_point(ggplot2::aes(color = Group)) +
+      ggplot2::scale_color_manual(values = color, name = "Group") +
+      ggplot2::theme_classic() +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45,
+                                                vjust = 1,
+                                                hjust=1)) +
+      ggplot2::ggtitle(gene_name)
+    if(print){
+      print(ggplot_counts_plot)
+    }
+    if (!is.null(save_path)){
+      file_name <- paste0("counts_plot_", gene_name, ".pdf")
+      file_path <- file.path(save_path, file_name)
+      ggplot2::ggsave(filename = file_path, plot = ggplot_counts_plot)
+    }
+    if(return_data){
+      return(ggplot_counts_plot)
+    }
+  } else {
+    return(counts_plot)
+  }
+}
+```
+
+
+
+Again, I use lapply to loop through a list. 
+```{r}
+lapply(gene_list, function(x) plot_genes(gene_id = x,
+                                         gene_id_list = all_gene_ids,
+                                         deseq_obj = dds,
+                                         intgroup = "Genotype_R",
+                                         plot_ggplot = TRUE,
+                                         color = color_genotype,
+                                         return_data = FALSE,
+                                         print = TRUE,
+                                         save_path = 
+                                           file.path(base_path, "images",
+                                                     "gene_plots")))
+```
+
+
+## PCA on DE genes
+
+First we need to identify all DE genes, because we have lots of lists, we can use lapply again.
+
+Again, creating a directory
+```{r}
+ifelse(!dir.exists(file.path(base_path, "images", "PCA")),
+       dir.create(file.path(base_path, "images", "PCA")), FALSE)
+```
+
+```{r}
+gene_lists <- list("wt" = all_sig_wt, "ctl" =  all_sig_ctl,
+                   "gata6" = all_sig_gata6, "rardn" = all_sig_rardn,
+                   "dko" = all_sig_dko)
+all_gene_list <- lapply(gene_lists, function(x){
+  # This pulls out the genes within each gene list
+  gene_list <- lapply(x, function(y){rownames(y)})
+  gene_list <- unique(unlist(gene_list))
+})
+all_gene_list <- unique(unlist(all_gene_list))
+```
+
+```{r}
+# Find index of all genes used to plot
+select <- match(all_gene_list, rownames(assay(vsd)))
+intgroup <- "Genotype_R"
+# Perform PCA
+pca <- prcomp(t(assay(vsd)[select, ]))
+# Find percent variability
+percentVar <- pca$sdev^2/sum(pca$sdev^2)
+percentVar <- round(100 * percentVar)
+intgroup.df <- as.data.frame(colData(vsd)[, intgroup, 
+    drop = FALSE])
+group <- if (length(intgroup) > 1) {
+    factor(apply(intgroup.df, 1, paste, collapse = ":"))
+} else {
+    colData(vsd)[[intgroup]]
+}
+pcaDataSigGenes <- data.frame(PC1 = pca$x[, 1], PC2 = pca$x[, 2],
+                              group = group, intgroup.df,
+                              name = colnames(vsd))
+```
+
+We can now plot the PCA as we did before.
+
+```{r}
+pc_plot <- ggplot2::ggplot(pcaDataSigGenes,
+                           ggplot2::aes(PC1, PC2, color = Genotype_R)) +
+  ggplot2::geom_point(size = 3) +
+  ggplot2::xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ggplot2::ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  ggplot2::coord_fixed() +
+  ggplot2::scale_color_brewer(palette = "Set1") +
+  ggplot2::theme_classic()
+pc_plot
+pdf(file.path(base_path, "images", "PCA", "PCA_on_DE_genes.pdf"))
+pc_plot
+dev.off()
+```
+
+## Gene Set Enrichment
+
+For Gene Set Enrichment, I am using gprofiler2 It uses a hypergeometric test to determine overrepresentation of genes from different categories.
+
+Currently I am using exclude_iea = FALSE. This means we are also including annotations that are only computationally predicted and not experimentally validated. I can see pluses and minuses to including this or not, but we can discuss. I am also running GO analysis for all positive log fold change and all negative log fold change genes from each comparision. This is because the genes that are up and downregulated in response to the deletion of Gata (for example) are likely not in the same functional categories and it makes more sense to separate them out.
+
+```{r}
+all_gene_ens <- sub(".*_ENSMUSG", "ENSMUSG", all_gene_names)
+# Put together all the values to pass to gprofiler
+go_run <- list(Gata6_vs_Neurog3cre_Gata6 =
+                 list(data_location = all_sig_ctl$Neurog3cre_Gata6,
+                      pos_DE = "Gata_6",
+                      neg_DE = "Neurog3cre_Gata6"),
+               Gata6_vs_Neurog3cre_RARdn = 
+                 list(data_location = all_sig_ctl$Neurog3cre_RARdn,
+                      pos_DE = "Gata6",
+                      neg_DE = "Neurog3cre_RARdn"),
+               Gata6_vs_Neurog3cre_Gata6_RARdn = 
+                 list(data_location = all_sig_ctl$Neurog3cre_RARdn_Gata6,
+                      pos_DE = "Gata6",
+                      neg_DE = "Neurog3cre_Gata6_RARdn"),
+               Neurog3cre_RARdn_vs_Neurog3cre_Gata6 = 
+                 list(data_location = all_sig_rardn$Neurog3cre_Gata6,
+                      pos_DE = "Neurog3cre_RARdn",
+                      neg_DE = "Neurog3cre_Gata6"),
+               Neurog3cre_RARdn_vs_Neurog3cre_RARdn_Gata6 = 
+                 list(data_location = all_sig_rardn$Neurog3cre_RARdn_Gata6,
+                      pos_DE = "Neurog3cre_RARdn",
+                      neg_DE = "Neurog3cre_RARdn_Gata6"),
+               Neurog3cre_Gata6_vs_Neurog3cre_RARdn_Gata6 = 
+                 list(data_location = all_sig_gata6$Neurog3cre_RARdn_Gata6,
+                      pos_DE = "Neurog3cre_Gata",
+                      neg_DE = "Neurog3cre_RARdn_Gata6"))
+```
+
+Functions to run gprofiler
+
+```{r}
+run_gprofiler <- function(gene_table, pos_name, neg_name,
+                          custom_bg = FALSE, 
+                          correction_method = "gSCS",
+                          exclude_iea = FALSE,
+                          save_dir = NULL,
+                          plot_dir = NULL){
+  print(pos_name)
+  print(neg_name)
+  pos_sig_table <- gene_table[gene_table$log2FoldChange > 0, ]
+  neg_sig_table <- gene_table[gene_table$log2FoldChange < 0, ]
+  
+  # Here we order by the log fold change so that "ordered_query" can be true
+  pos_sig_table <- pos_sig_table[order(pos_sig_table$log2FoldChange),]
+  neg_sig_table <- neg_sig_table[order(neg_sig_table$log2FoldChange),]
+  pos_sig_genes <- rev(pos_sig_table$ens_id)
+  neg_sig_genes <- neg_sig_table$ens_id
+  pos_gost <- gost(query = pos_sig_genes,
+                   organism = "mmusculus",
+                   ordered_query = TRUE,
+                   exclude_iea = exclude_iea,
+                   user_threshold = 0.05,
+                   correction_method = correction_method,
+                   custom_bg = custom_bg)
+  
+  neg_gost <- gost(query = neg_sig_genes,
+                   organism = "mmusculus",
+                   ordered_query = TRUE,
+                   exclude_iea = exclude_iea,
+                   user_threshold = 0.05,
+                   correction_method = correction_method,
+                   custom_bg = custom_bg)
+  
+  sig_pos_res <- pos_gost$result[pos_gost$result$significant == TRUE, ]
+  sig_neg_res <- neg_gost$result[neg_gost$result$significant == TRUE, ]
+  
+  if (!is.null(save_dir)){
+    pos_save <- paste0(pos_name, "_from_", pos_name, "_vs_", neg_name, ".csv")
+    neg_save <- paste0(neg_name, "_from_", pos_name, "_vs_", neg_name, ".csv")
+    sig_pos_res_csv <- apply(sig_pos_res, 2, as.character)
+    sig_neg_res_csv <- apply(sig_neg_res, 2, as.character)
+    write.csv(sig_pos_res_csv, file = file.path(save_dir, pos_save))
+    write.csv(sig_neg_res_csv, file = file.path(save_dir, neg_save))
+  }
+  if (!is.null(plot_dir)){
+    save_name <- paste0(pos_name, "_vs_", neg_name, ".pdf")
+    
+    # This opens up a pdf file. We will save many images into this file
+    pdf(file.path(plot_dir, save_name))
+    
+    # These make the plots
+    plots <- list()
+    plots$plot1 <- gost_plots(sig_pos_res, "GO:", pos_name)
+    plots$plot2 <- gost_plots(sig_pos_res, "KEGG", pos_name)
+    plots$plot3 <- gost_plots(sig_pos_res, "TF", pos_name)
+    plots$plot4 <- gost_plots(sig_neg_res, "GO:", neg_name)
+    plots$plot5 <- gost_plots(sig_neg_res, "KEGG", neg_name)
+    plots$plot6 <- gost_plots(sig_neg_res, "TF", neg_name)
+    
+    plots_list <- lapply(plots, function(x){
+      if (!is.null(x)){
+        plot(x)
+      }
+    })
+    
+    # This closes the pdf
+    dev.off()
+    
+    print("done")
+    
+  }
+  return_list <- list(pos_gost, neg_gost)
+  names(return_list) <- c(pos_name, neg_name)
+  return(return_list)
+  
+}
+gost_plots <- function(results_table, source, title){
+  source_results <- results_table[grep(source, results_table$source), ]
+  if (nrow(source_results) > 0) {
+    source_results <- source_results[order(source_results$precision), ]
+    source_results$term_name <- factor(source_results$term_name, levels = 
+                                   unique(source_results$term_name))
+    source_results$log_padj <- -log10(source_results$p_value)
+    go_plot <- ggplot2::ggplot(source_results, ggplot2::aes(x = precision,
+                                                            y = term_name,
+                                                            color = log_padj,
+                                                            size =
+                                                          intersection_size)) +
+      ggplot2::geom_point() +
+      ggplot2::scale_size(range(c(1,max(source_results$intersection_size)))) +
+      viridis::scale_color_viridis() +
+      ggplot2::ggtitle(paste0(source, ": ", title)) +
+      ggplot2::theme(text = ggplot2::element_text(size = 5))
+    
+    return(go_plot)
+  }
+}
+```
+
+Now we can run through all the options as a list and perform GO analysis on all the samples
+
+First let's check on our directories
+```{r}
+ifelse(!dir.exists(file.path(base_path, "images", "GSE")),
+       dir.create(file.path(base_path, "images", "GSE")), FALSE)
+ifelse(!dir.exists(file.path(base_path, "GSE_files")),
+       dir.create(file.path(base_path, "GSE_files")), FALSE)
+```
+
+```{r}
+all_gost_results <- lapply(go_run, function(x)
+  run_gprofiler(gene_table = x$data_location,
+                pos_name = x$pos_DE,
+                neg_name = x$neg_DE,
+                custom_bg = all_gene_ens,
+                save_dir = file.path(base_path, "GSE_files"),
+                plot_dir = file.path(base_path, "images", "GSE")))
+```
+
+This now returns gost results in a similar structure to our go_run list. It is a list of lists where the first level is the comparison run and the second level is the specific sample. To make this, I take all genes in one comparison that are upregulated in one sample and use then use those genes to run the analysis. I do the same with the genes upregulated in the other sample. This is why for one comparison, we get two sets of results. We can use these results to make different plots later.
+
+Gost outputs a results table with many different columns described below:
+p_value: This is the p-value following multiple testing correction
+term_size: Number of genes associated with a specific term
+query_size: Number of genes passed to the function, this could be different than the length of the list if genes were mapped to multiple ensembl IDs, genes failed to map to ensembl IDs
+intersection_size: the number of genes from the list that overlap with a specific term.
+precision: intersection_size/query_size
+recall: intersection_size/term_size
+term_id: term identifier
+source: data source (ie GO, KEGG...)
+parents: lister of term ids that are above the given term.
+
+This results table has been saved so you can look through it.
+
+The above funtion also plots the GO, KEGG, and TF results. We can easily change what is plotted in the future. I've written it so a multi-page PDF is regurned. Each pdf is named based on the differential expression comparision and each plot is named based on one of the genotypes in the comparison. For example, in the Gata6_vs_Neurog3cre_Gata6 file, threre are plots named "Gata6" and plots named "Neurog3cre_Gata6". The plots named "Gata6" were constructed using all of the positive log fold values from the differential expession test and therefore are based only on genes that are upregulated in Gata6 compared to Neurog3cre_Gata6. On the other hand, plots named "Neurog3cre_Gata6" were made using genes with a negative log fold change in the differential expression test and represent gene that were upregulated in the Neurog3cre_Gata6 mice compared to the Gata6 mice.
+
+We can also make a manhattan-like plot lbeling some of the interesting hits.
+
+These plots show the pvalues of all of the hits across all of the different types of databases used. I then looked in the associated files (the name of the plot (from the images/GSE folder) and name of the file (from the GSE_files folder) should match) and found interesting hits. These hits can then be circled and information about the hit can be printed below the plot. I have looked through the list and found some obvious hits, but we can certainly remake these with other things you find interesting.
+
+```{r, fig.width=11, fig.height=8}
+gost_results <- all_gost_results$Gata6_vs_Neurog3cre_Gata6$Gata_6
+gplot <- gostplot(gost_results,
+                          capped = FALSE, interactive = FALSE)
+gplot_pub <- publish_gostplot(gplot,
+                                    highlight_terms = c("KEGG:04911",
+                                                        "REAC:R-MMU-420092"),
+                                    width = 11, height = 8,
+                              filename =
+                                file.path(base_path, "images", "GSE",
+                                  "Gata6_from_Gata6_vs_Neurog3cre_Gata6.pdf"))
+gplot_pub
+```
+
+```{r, fig.width=11, fig.height=8}
+gost_results <- all_gost_results$Gata6_vs_Neurog3cre_Gata6_RARdn$Gata6
+gplot <- gostplot(gost_results,
+                          capped = FALSE, interactive = FALSE)
+gplot_pub <- publish_gostplot(gplot,
+                                    highlight_terms = c("GO:0050796",
+                                                        "GO:0032024",
+                                                        "GO:0030073",
+                                                        "HP:0000819",
+                                                        "REAC:R-MMU-264876",
+                                                        "REAC:R-MMU-381676",
+                                                        "TF:M01181",
+                                                        "TF:M07999"),
+                                    width = 11, height = 8,
+                              filename =
+                                file.path(base_path, "images", "GSE",
+                            "Gata6_from_Gata6_vs_Neurog3cre_Gata6_RARdn.pdf"))
+gplot_pub
+```
+
+
+
+```{r, fig.width=11, fig.height=8}
+gost_results <-
+  all_gost_results$Neurog3cre_Gata6_vs_Neurog3cre_RARdn_Gata6$Neurog3cre_Gata
+gplot <- gostplot(gost_results,
+                          capped = FALSE, interactive = FALSE)
+gplot_pub <- publish_gostplot(gplot,
+                                    highlight_terms = c("KEGG:04940",
+                                                        "KEGG:04911",
+                                                        "KEGG:04931"),
+                                    width = 11, height = 8,
+                              filename =
+                                file.path(base_path, "images", "GSE",
+      "Neurog3cre_Gata6_from_Neurog3cre_Gata6_vs_Neurog3cre_RARdn_Gata6.pdf"))
+gplot_pub
+```
+
+```{r, fig.width=11, fig.height=8}
+gost_results <-
+  all_gost_results$Neurog3cre_RARdn_vs_Neurog3cre_Gata6$Neurog3cre_RARdn
+gplot <- gostplot(gost_results,
+                          capped = FALSE, interactive = FALSE)
+gplot_pub <- publish_gostplot(gplot,
+                                    highlight_terms = c("GO:0030073",
+                                                        "GO:0050796",
+                                                        "GO:0031769"
+                                                        ),
+                                    width = 11, height = 8,
+                              filename =
+                                file.path(base_path, "images", "GSE",
+      "Neurog3cre_RARdn_from_Neurog3cre_RARdn_vs_Neurog3cre_Gata6.pdf"))
+gplot_pub
+```
+
+
+```{r, fig.width=11, fig.height=8}
+gost_results <-
+  all_gost_results$Neurog3cre_RARdn_vs_Neurog3cre_RARdn_Gata6$Neurog3cre_RARdn
+gplot <- gostplot(gost_results,
+                          capped = FALSE, interactive = FALSE)
+gplot_pub <- publish_gostplot(gplot,
+                                    highlight_terms = c("GO:0030073",
+                                                        "KEGG:04940",
+                                                        "KEGG:04911"),
+                                    width = 11, height = 8,
+                              filename =
+                                file.path(base_path, "images", "GSE",
+    "Neurog3cre_RARdn_from_Neurog3cre_RARdn_vs_Neurog3cre_RARdn_Gata6.pdf"))
+gplot_pub
+```
+
+
+I didn't see anything that was obviously related to your study in the following comparisons:
+Neurog3cre_gata6_from_Neurog3cre_Gata6_vs_Neurog3cre_gata6
+Neurog3cre_Gata6_from_Neurog3cre_rARdn_vs_Neurog3cre_Gata6
+Gata6_from_Gata6_vs_Neurog3_creRARdn
+Neurog3cre_Gata6_RARdn_from_Gata6_vs_Neurog3cre_Gata6_RARdn
+Neurog3cre_RARdn_from_Gata6_vs_Neurog3cre_RARdn
+Neurog3cre_RARdn_Gata6_from_Neurog3cre_Gata_vs_Neurog3cre_RARdn_Gata6
+eurog3cre_RARdn_Gata6_from_Neurog3cre_RARdn_vs_Neurog3cre_RARdn_Gata6
+
+However, many of these had multiple hits, I just don't know the system well enough to pull out more. I plan on reading more papers regarding this study in the next few days and will look more closely at the gene lists.
+
+I like to always finish by printing the session info. This way I know the versions of packages used to produce this exact analysis.
+
+```{r}
+sessionInfo()
+```

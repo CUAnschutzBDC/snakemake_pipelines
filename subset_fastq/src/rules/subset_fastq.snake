@@ -1,0 +1,40 @@
+# This runs star on the files from the samples document can be single or paired end
+
+rule subset_fastq:
+    output:
+        directory("{sample}_subset_fastq")
+    params:
+        job_name = "{sample}_fastq_subset",
+        memory   = "select[mem>20] rusage[mem=20]",
+        data_dir = DATA_DIR 
+    log:
+        "logs/{sample}_subset_fastq"
+    threads:
+        1
+    run:
+        def _get_fq_paths(sample, read):
+            fq_path = os.path.join(params.data_dir, sample + "*" + read + "*.fastq.gz") 
+            fq_path = glob.glob(os.path.abspath(fq_path))        
+            return fq_path
+
+        path_1 = _get_fq_paths(wildcards.sample, "_R1_")
+        path_2 = _get_fq_paths(wildcards.sample, "_R2_")
+        name_1 = wildcards.sample + "_R1_"
+        name_2 = wildcards.sample + "_R2_"
+        shell(
+            """
+            mkdir {output[0]}
+            cd {output[0]}
+            zcat {path_1} | split -d -l 4000000 - {name_1}
+            zcat {path_2} | split -d -l 4000000 - {name_2}
+            for file in *.fastq
+            do
+            str="$(head -1 $file)"
+            if [[ $str == @* ]]
+            then
+                gzip $file
+            fi
+            done
+            rename .gz .fastq.gz *.gz
+            """
+        )

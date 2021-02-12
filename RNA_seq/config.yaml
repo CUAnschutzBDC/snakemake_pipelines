@@ -1,0 +1,58 @@
+##### aligning information #####
+
+# Sample sheet. This is the path to the sample sheet. Should be a tab delimited
+# tsv file with the one column titled "sample" and a second column titled
+# "fastq1" with filenames relating to each sample. If paired end sequencing was
+# done, another columen should be titled "fastq2" with filenames for read 2.
+# If spike-ins were included another column can be spike-in with True/False
+# values and you must include paths for the COMBINED_GENOME and COMBINED_GTF
+SAMPLE_TABLE:
+  "files/samples.tsv"
+
+# Project the name of the project
+PROJECT:
+  "PTPN_KO"
+
+# Reference. This should be the path to a directory created using star
+GENOME:
+  /beevol/home/rbilab/ref/indices/star/mouse/GRCm38
+
+# Combined genome if spike-ins were used. This should be a path to a combined index using
+# star. Can leave blank if no spike-ins were used.
+COMBINED_GENOME:
+
+# GTF. This is a path to the gtf file. Should match the genome fa used
+GTF:
+  /beevol/home/rbilab/ref/annotation/mouse/GRCm38/gtf/Mus_musculus.GRCm38.96.gtf
+
+# Combined gtf if spike-ins were used. Should match the genome fa used.
+# Can leave blank if no spike-ins were used.
+COMBINED_GTF:
+
+# Path to results directory
+RESULTS:
+  "results"
+
+# Path to adaptors file. This is included in the bbtools package under .../bbmap/resources/adaptors.fa
+# Not necessary if not using bbduk for trimming
+ADAPTORS:
+
+
+# Trim method, can be "bbduk", "cutadapt", or "no"
+TRIM_METHOD:
+  "cutadapt"
+
+# Parameters for paired end or single end experiments
+PE:
+    cutadapt:      " -m 20 -a 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCA' -A 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT' "
+    salmon:        " --validateMappings --libType 'A' --numBootstraps 50 "
+    featureCounts: " --extraAttributes 'gene_name,gene_biotype' -s 1 -p -B "
+    bbduk:         "ktrim=r k=23 mink=11 hdist=1 tpe tbo"
+
+
+SE:
+    cutadapt:      " -m 20 -a 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC' "
+    salmon:        " --validateMappings --fldMean 200 --fldSD 20 --libType 'A' --numBootstraps 50 "
+    featureCounts: " --extraAttributes 'gene_name,gene_biotype' -s 1 "
+    bbduk:         "ktrim=r k=23 mink=11 hdist=1 tpe tbo"
+

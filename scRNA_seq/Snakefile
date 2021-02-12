@@ -1,0 +1,104 @@
+""" Snake pipeline for running cellranger with CITE-seq data """
+
+# This has been borrowed and modified from pipelines written by Ryan Sheridan
+
+# Configure shell for all rules 
+shell.executable("/bin/bash")
+shell.prefix("set -o nounset -o pipefail -o errexit -x; ")
+import subprocess
+import glob
+import os 
+import re
+
+
+
+# Parameters from config.yaml
+RAW_DATA     = config["RAW_DATA"]
+SAMPLES      = config["SAMPLES"]
+RNA_SAMPLES  = config["RNA_SAMPLES"]
+ADT_SAMPLES  = config["ADT_SAMPLES"]
+VDJ_SAMPLES  = config["VDJ_SAMPLES"]
+RESULTS      = config["RESULTS"]
+GENOME       = config["GENOME"]
+ADT_REF      = config["ADT_REF"]
+VDJ_REF      = config["VDJ_REF"]
+MAX_JOBS     = config["MAX_JOBS"]
+LSF_TEMPLATE = config["LSF_TEMPLATE"]
+AGGR_GROUP   = config["AGGR_SAMPLES"]
+
+# Function to check paths for input files/directories
+def _check_path(path):
+    if os.path.exists(path):
+        return os.path.abspath(path)
+    else:
+        sys.exit("ERROR: " + path + " does not exist.")
+
+
+
+# Set sample/group names
+RNA_SAMPLES     = [x.strip() for x in RNA_SAMPLES]
+FASTQ_INFO      = "_S[0-9]+_L[0-9]+_R[12]_[0-9]+\.fastq\.gz"
+
+SAMPLE_DICT_RNA = {SAMPLES[i]: RNA_SAMPLES[i] for i in range(len(SAMPLES))}
+
+if ADT_SAMPLES:
+    ADT_SAMPLES = [re.sub(", ", ",", x.strip()) for x in ADT_SAMPLES]
+    #SAMPLES     = [x + "-" + re.sub(",", "_", y) for x, y in zip(RNA_SAMPLES, ADT_SAMPLES)]
+    SAMPLE_DICT_ADT = {SAMPLES[i]: ADT_SAMPLES[i] for i in range(len(SAMPLES))}
+    ADT_REF     = _check_path(ADT_REF)
+
+if VDJ_SAMPLES:
+    VDJ_SAMPLES = [x.strip() for x in VDJ_SAMPLES]
+    SAMPLE_DICT_VDJ = {SAMPLES[i]: VDJ_SAMPLES[i] for i in range(len(SAMPLES))}
+    VDJ_REF     = _check_path(VDJ_REF)
+
+# Check/set directory/file paths
+RAW_DATA = _check_path(RAW_DATA)
+RESULTS  = _check_path(RESULTS)
+GENOME   = _check_path(GENOME)
+
+FASTQ_DIR = RESULTS + "/fastqs"
+if not os.path.exists(FASTQ_DIR):
+    os.makedirs(FASTQ_DIR)
+
+if LSF_TEMPLATE:
+    LSF_TEMPLATE = _check_path(LSF_TEMPLATE)
+else:
+    LSF_TEMPLATE = "lsf"
+
+if not AGGR_GROUP:
+    AGGR_GROUP = "none"
+
+# Final output files
+rule all:
+    input:
+        expand(
+            "{results}/logs/{sample}_csv_done.out",
+            results = RESULTS, sample = SAMPLES
+        ),
+        expand(
+            "{results}/logs/{sample}_count_done.out",
+            results = RESULTS, sample = SAMPLES
+            ),
+        expand(
+            "{results}/logs/{group}_csv_aggr_done.out",
+            results = RESULTS, group = AGGR_GROUP
+            ),
+        expand(
+            "{results}/logs/{group}_cellranger_aggr_done.out",
+            results = RESULTS, group = AGGR_GROUP
+            )
+        # expand(
+        #     "{results}/logs/{sample}_count_done.out", 
+        #     results = RESULTS, sample = SAMPLES
+        # ),
+        # expand(
+        #     "{results}/logs/{group}_aggr_done.out", 
+        #     results = RESULTS, group = GROUP
+        # ),
+        # expand(
+        #     "{results}/logs/{vdj_sample}_vdj_done.out",
+        #     results = RESULTS, vdj_sample = VDJ_SAMPLES
+        # )
+
+include: "src/rules/cellranger_multi.snake"
