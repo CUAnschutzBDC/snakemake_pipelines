@@ -31,9 +31,10 @@ rule merge_fastqs:
         # Function to retrieve fastq paths
         def _get_fq_paths(sample, read, raw_dir):
             path_list = []
-
-            for dir in raw_dir:
-                fq_paths = os.path.join(dir, sample + "*" + read + "*.fastq.gz")
+            raw_dir = raw_dir.split(",")
+            for directory in raw_dir:
+                _check_path(directory)
+                fq_paths = os.path.join(directory, sample + "*" + read + "*.fastq.gz")
                 fq_paths = glob.glob(os.path.abspath(fq_paths))
                 if fq_paths:
                     if re.search("_[0-9]" + FASTQ_INFO, fq_paths[0]):
@@ -43,7 +44,7 @@ rule merge_fastqs:
                             fastq_num = re.search("_[0-9]" + FASTQ_INFO, x).group(0)[1]
                             path_dict[int(fastq_num) - 1] = fastq_count
                             fastq_count += 1
-                        path_list = [fq_paths[path_dict[i]] for i in range(len(path_dict))]
+                        [path_list.append(fq_paths[path_dict[i]]) for i in range(len(path_dict))]
                     else:
                         [path_list.append(x) for x in fq_paths]
 
@@ -91,7 +92,7 @@ rule merge_fastqs:
                         path_list = []
                         [path_list.append(x) for x in _get_fq_paths(name, read, raw_dir)]
                         path_dict[name] = path_list
-                    #print(path_dict)
+                    path_dict
                     path_list = list(zip(path_dict[names[0]], path_dict[names[1]]))
                     cmd_list = []
                     for i in path_list:
@@ -110,7 +111,7 @@ rule merge_fastqs:
         rna = params.rna_dict[wildcards.sample]
         adt = params.adt_dict[wildcards.sample]
         vdj = params.vdj_dict[wildcards.sample]
-        raw_dir = [params.raw_data[wildcards.sample]]
+        raw_dir = params.raw_data[wildcards.sample]
         # Create symlinks for gene expression fastqs
         merged_names_gex = wildcards.sample + "_GEX"
         _merge_fastqs(rna, merged_names_gex, raw_dir)
@@ -224,7 +225,6 @@ rule create_sample_csv:
             if os.path.isfile(sample_csv):
                 os.remove(sample_csv)
             if params.adt_dict[wildcards.sample]:
-                sample_csv = os.path.join(params.results, wildcards.sample + ".csv")
                 adt_id = wildcards.sample + "_FB"
                 _create_sample_csv_count(adt_id, "Antibody Capture", sample_csv,
                     params.fq_dir)
@@ -282,7 +282,7 @@ rule cellranger_count:
                 sample_csv={wildcards.sample}_count.csv
                 ab_csv={params.barcodes}
 
-                cd {params.results}
+                cd {wildcards.results}
 
                 cellranger count \
                     --id={wildcards.sample} \
@@ -300,7 +300,7 @@ rule cellranger_count:
                 """
                 sample_csv={wildcards.sample}_count.csv
 
-                cd {params.results}
+                cd {wildcards.results}
 
                 cellranger count \
                     --id={wildcards.sample} \

@@ -57,7 +57,6 @@ else:
     SAMPLE_DICT_VDJ = {SAMPLES[i]: "" for i in range(len(SAMPLES))}
 
 # Check/set directory/file paths
-RAW_DATA = [_check_path(i) for i in RAW_DATA]
 RAW_DATA_DICT = {SAMPLES[i]: RAW_DATA[i] for i in range(len(SAMPLES))}
 RESULTS  = _check_path(RESULTS)
 GENOME   = _check_path(GENOME)
@@ -80,30 +79,18 @@ rule all:
         expand(
             "{results}/logs/{sample}_csv_done.out",
             results = RESULTS, sample = SAMPLES
-        )
-        # expand(
-        #     "{results}/logs/{sample}_count_done.out",
-        #     results = RESULTS, sample = SAMPLES
-        #     ),
-        # expand(
-        #     "{results}/logs/{group}_csv_aggr_done.out",
-        #     results = RESULTS, group = AGGR_GROUP
-        #     ),
-        # expand(
-        #     "{results}/logs/{group}_cellranger_aggr_done.out",
-        #     results = RESULTS, group = AGGR_GROUP
-        #     )
-        # expand(
-        #     "{results}/logs/{sample}_count_done.out", 
-        #     results = RESULTS, sample = SAMPLES
-        # ),
-        # expand(
-        #     "{results}/logs/{group}_aggr_done.out", 
-        #     results = RESULTS, group = GROUP
-        # ),
-        # expand(
-        #     "{results}/logs/{vdj_sample}_vdj_done.out",
-        #     results = RESULTS, vdj_sample = VDJ_SAMPLES
-        # )
+        ),
+        expand(
+            "{results}/logs/{sample}_count_done.out",
+            results = RESULTS, sample = SAMPLES
+            ),
+        expand(
+            "{results}/logs/{group}_csv_aggr_done.out",
+            results = RESULTS, group = AGGR_GROUP
+            ),
+        expand(
+            "{results}/logs/{group}_cellranger_aggr_done.out",
+            results = RESULTS, group = AGGR_GROUP
+            )
 
 include: "src/rules/cellranger_multi.snake"
