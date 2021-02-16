@@ -46,14 +46,19 @@ if ADT_SAMPLES:
     #SAMPLES     = [x + "-" + re.sub(",", "_", y) for x, y in zip(RNA_SAMPLES, ADT_SAMPLES)]
     SAMPLE_DICT_ADT = {SAMPLES[i]: ADT_SAMPLES[i] for i in range(len(SAMPLES))}
     ADT_REF     = _check_path(ADT_REF)
+else:
+    SAMPLE_DICT_ADT = {SAMPLES[i]: "" for i in range(len(SAMPLES))}
 
 if VDJ_SAMPLES:
     VDJ_SAMPLES = [x.strip() for x in VDJ_SAMPLES]
     SAMPLE_DICT_VDJ = {SAMPLES[i]: VDJ_SAMPLES[i] for i in range(len(SAMPLES))}
     VDJ_REF     = _check_path(VDJ_REF)
+else:
+    SAMPLE_DICT_VDJ = {SAMPLES[i]: "" for i in range(len(SAMPLES))}
 
 # Check/set directory/file paths
-RAW_DATA = _check_path(RAW_DATA)
+RAW_DATA = [_check_path(i) for i in RAW_DATA]
+RAW_DATA_DICT = {SAMPLES[i]: RAW_DATA[i] for i in range(len(SAMPLES))}
 RESULTS  = _check_path(RESULTS)
 GENOME   = _check_path(GENOME)
 
@@ -75,19 +80,19 @@ rule all:
         expand(
             "{results}/logs/{sample}_csv_done.out",
             results = RESULTS, sample = SAMPLES
-        ),
-        expand(
-            "{results}/logs/{sample}_count_done.out",
-            results = RESULTS, sample = SAMPLES
-            ),
-        expand(
-            "{results}/logs/{group}_csv_aggr_done.out",
-            results = RESULTS, group = AGGR_GROUP
-            ),
-        expand(
-            "{results}/logs/{group}_cellranger_aggr_done.out",
-            results = RESULTS, group = AGGR_GROUP
-            )
+        )
+        # expand(
+        #     "{results}/logs/{sample}_count_done.out",
+        #     results = RESULTS, sample = SAMPLES
+        #     ),
+        # expand(
+        #     "{results}/logs/{group}_csv_aggr_done.out",
+        #     results = RESULTS, group = AGGR_GROUP
+        #     ),
+        # expand(
+        #     "{results}/logs/{group}_cellranger_aggr_done.out",
+        #     results = RESULTS, group = AGGR_GROUP
+        #     )
         # expand(
         #     "{results}/logs/{sample}_count_done.out", 
         #     results = RESULTS, sample = SAMPLES

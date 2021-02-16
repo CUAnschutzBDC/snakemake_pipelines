@@ -3,10 +3,15 @@
 
 # Path to the fastq directory, multiple directories can be given.
 RAW_DATA:
-    "raw_data/210114_A00405_0338_BHNYLTDSXY"
+    - "raw_data/run_1"
+    - "raw_data/run_2"
 
+# A list of sample names. This will be the name of the output folder. All sample 
+# names must be unique. There must be the same number of sample names as RNA_samples
+# below.
 SAMPLES:
-    - "Hashtag_STOC"
+    - "Hashtag_STOC_run_1"
+    - "Hashtag_STOC_run_2"
 
 # Sample names separated by groups to aggregate. If no samples to aggregate,
 # leave this blank. Structure is as follows:
@@ -22,17 +27,21 @@ AGGR_SAMPLES:
 # included in the analysis.
 RNA_SAMPLES:
     - "Hashtag_STOC_samples_121720_GEX"
+    - "Hashtag_STOC_samples_121720_GEX"
 
 # Sample names for CITE-seq and cell hashing fastqs. If 
 # the libraries were sequenced multiple times, just make sure the fastqs 
 # from all runs begin with the sample name. If CITE-seq or cell hashing 
-# was not performed, leave this blank.
+# was not performed, leave this blank. If you have CITE-seq on only a
+# a subset of samples, keep the slot empty (ex. - "")
 ADT_SAMPLES:
+    - "Hashtag_STOC_samples_121720_FB"
     - "Hashtag_STOC_samples_121720_FB"
 
 # Sample names for VDJ fastqs. Follow the same parameters required for gene
 # expression fastqs. If VDJ sequencing was not performed, leave this blank.
 VDJ_SAMPLES:
+    - "Hashtag_STOC_samples_121720_TCR"
     - "Hashtag_STOC_samples_121720_TCR"
 
 # Path to the output directory.
