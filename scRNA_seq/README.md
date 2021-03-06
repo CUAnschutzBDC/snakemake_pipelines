@@ -27,6 +27,7 @@ conda install snakemake -c bioconda -c conda-forge
 >* VDJ_REF: Path to the cellranger VDJ reference. If VDJ sequencing were not performed, leave this blank.
 >* MAX_JOBS: The maximum number of jobs that can be submitted by cell ranger at a time
 >* LSF_TEMPLATE: Path to an LSF template. One is included in this git repo.
+>* CHEMISTRY: *optional* Arguments to the `--chemstiry` flag in cellranger count. If left blank, chemistry will be `auto`. Only use this if the pipeline failed because of a failure to detect the chemistry. Can be filled in for only some samples.
 
 4. Update snakecharmer.sh to your specific cluster specs. 
 >* change the -q argument to the queue you want to use 

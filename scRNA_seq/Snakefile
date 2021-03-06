@@ -9,6 +9,7 @@ import subprocess
 import glob
 import os 
 import re
+from collections import defaultdict
 
 
 
@@ -25,6 +26,8 @@ VDJ_REF      = config["VDJ_REF"]
 MAX_JOBS     = config["MAX_JOBS"]
 LSF_TEMPLATE = config["LSF_TEMPLATE"]
 AGGR_GROUP   = config["AGGR_SAMPLES"]
+CHEMISTRY    = config["CHEMISTRY"]
+VELOCYTO_GROUP = config["VELOCYTO_GROUP"]
 
 # Function to check paths for input files/directories
 def _check_path(path):
@@ -38,6 +41,7 @@ def _check_path(path):
 # Set sample/group names
 RNA_SAMPLES     = [x.strip() for x in RNA_SAMPLES]
 FASTQ_INFO      = "_S[0-9]+_L[0-9]+_R[12]_[0-9]+\.fastq\.gz"
+FASTQ_SHORT     = "_S[0-9]+_R[12]_[0-9]+\.fastq\.gz"
 
 SAMPLE_DICT_RNA = {SAMPLES[i]: RNA_SAMPLES[i] for i in range(len(SAMPLES))}
 
@@ -56,6 +60,19 @@ if VDJ_SAMPLES:
 else:
     SAMPLE_DICT_VDJ = {SAMPLES[i]: "" for i in range(len(SAMPLES))}
 
+print(CHEMISTRY)
+
+# Make a chemistry dictionary
+for i in range(len(SAMPLES)):
+    if(CHEMISTRY is not None):
+        if not CHEMISTRY.get(SAMPLES[i]):
+            CHEMISTRY[SAMPLES[i]] = "auto"
+    else:
+        CHEMISTRY = {}
+        CHEMISTRY[SAMPLES[i]] = "auto"
+
+print(CHEMISTRY)
+
 # Check/set directory/file paths
 RAW_DATA_DICT = {SAMPLES[i]: RAW_DATA[i] for i in range(len(SAMPLES))}
 RESULTS  = _check_path(RESULTS)
@@ -72,6 +89,9 @@ else:
 
 if not AGGR_GROUP:
     AGGR_GROUP = "none"
+
+if not VELOCYTO_GROUP:
+    VELOCYTO_GROUP = "none"
 
 # Final output files
 rule all:
@@ -91,6 +111,15 @@ rule all:
         expand(
             "{results}/logs/{group}_cellranger_aggr_done.out",
             results = RESULTS, group = AGGR_GROUP
+            ),
+        expand(
+            "{results}/logs/{sample}_velocyto_done.out",
+            results = RESULTS, sample = SAMPLES
+        ),
+        expand(
+            "{results}/logs/{group}_velocyto_combined.out",
+            results = RESULTS, group = VELOCYTO_GROUP
             )
 
 include: "src/rules/cellranger_multi.snake"
+include: "src/rules/velocyto.snake"

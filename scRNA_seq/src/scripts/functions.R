@@ -265,7 +265,9 @@ discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
                           color = NULL, save_plot = NULL, show_legend = TRUE,
                           size = 0.25){
   base_plot <- ggplot2::ggplot(data = plot_df,
-                               ggplot2::aes_(~dim1, ~dim2))
+                               ggplot2::aes_(~dim1, ~dim2)) +
+    xlab(axis_names[1]) +
+    ylab(axis_names[2])
   
   # Add colors based on metric chosen
   base_plot <- base_plot +
@@ -295,21 +297,24 @@ discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
 continuousPlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
                             color = NULL, save_plot = NULL, show_legend = TRUE,
                             size = 0.25){
-  if (is.null(color)) {
-    low <- "#00AFBB"
-    high <- "#FC4E07"
-  } else {
-    low <- color[1]
-    high <- color[2]
-  }
-  
-  base_plot <- ggplot2::ggplot(data = plot_df, ggplot2::aes_(~dim1, ~dim2))
+  base_plot <- ggplot2::ggplot(data = plot_df, ggplot2::aes_(~dim1, ~dim2)) +
+    xlab(axis_names[1]) +
+    ylab(axis_names[2])
   
   base_plot <- base_plot +
     ggplot2::geom_point(ggplot2::aes_(colour = ~colour_metric),
-                        show.legend = show_legend, size = size) +
-    ggplot2::scale_color_gradient(low = low,
-                                  high = high, name = col_by)
+                        show.legend = show_legend, size = size)
+  
+  if (is.null(color)) {
+    base_plot <- base_plot + ggplot2::scale_color_viridis_c(option = "magma") +
+      labs(color = col_by)
+  } else {
+    low <- color[1]
+    high <- color[2]
+    base_plot <- base_plot + 
+      ggplot2::scale_color_gradient(low = low, high = high, name = col_by)
+  }
+    
   
   if (!(is.null(save_plot))){
     ggplot2::ggsave(save_plot, plot = base_plot)
@@ -325,7 +330,9 @@ groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "d
   plot2 <- plot_df[plot_df$all != "all_samples", ]
   
   base_plot <- ggplot2::ggplot(data = plot2, ggplot2::aes_(~dim1,
-                                                           ~dim2))
+                                                           ~dim2)) +
+    xlab(axis_names[1]) +
+    ylab(axis_names[2])
   
   base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
                                                ggplot2::aes_(~dim1, ~dim2), 
@@ -371,7 +378,9 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
   plot1 <- plot_df[plot_df$all == "all_samples", ]
   plot2 <- plot_df[plot_df$all != "all_samples", ]
   
-  base_plot <- ggplot2::ggplot(data = plot2, ggplot2::aes_(~dim1, ~dim2))
+  base_plot <- ggplot2::ggplot(data = plot2, ggplot2::aes_(~dim1, ~dim2)) +
+    xlab(axis_names[1]) +
+    ylab(axis_names[2])
   
   base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
                                                ggplot2::aes_(~dim1, ~dim2), 
