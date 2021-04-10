@@ -61,7 +61,7 @@ ADT_REF:
 # Path to the Cell Ranger VDJ reference. If VDJ sequencing was not performed,
 # leave this blank.
 VDJ_REF:
-    "/path/to/refdata-cellranger-vdj-GRCh38-alts-ensembl-5.0.0"
+    #"/path/to/refdata-cellranger-vdj-GRCh38-alts-ensembl-5.0.0"
 
 # Maximum number of jobs per sample that can be submitted by Cell Ranger
 # at a time.
@@ -75,3 +75,5 @@ LSF_TEMPLATE:
 # Arguments to pass for chemistry. Only use this if the run failed.
 CHEMISTRY:
     
+
+VELOCYTO_GROUP:

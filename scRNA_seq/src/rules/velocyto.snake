@@ -1,16 +1,18 @@
 # Function for getting groups of velocyto output
 def _get_input(wildcards):
     results_list = []
-    for i in VELOCYTO_GROUP[wildcards.group]:
-        results_list.append(wildcards.results + "/logs/" + 
-            i + "_velocyto_done.out")
+    if VELOCYTO_GROUP != "none":
+        for i in VELOCYTO_GROUP[wildcards.group]:
+            results_list.append(wildcards.results + "/logs/" + 
+                i + "_velocyto_done.out")
     return(results_list)
 
 def _get_velo_input(wildcards):
     results_list = []
-    for i in VELOCYTO_GROUP[wildcards.group]:
-        results_list.append(wildcards.results + "/" + i + "/velocyto/" + 
-            i + ".loom")
+    if VELOCYTO_GROUP != "none":
+        for i in VELOCYTO_GROUP[wildcards.group]:
+            results_list.append(wildcards.results + "/" + i + "/velocyto/" + 
+                i + ".loom")
     return(results_list)
 
 
@@ -55,7 +57,7 @@ rule combine_loom:
     log:
         "{results}/logs/{group}_combine_loom"
     run:
-        if params.group != "none":
+        if wildcards.group != "none":
             import loompy
             print(params.velocyto_input)
             loompy.combine(params.velocyto_input, params.out_file, key="Accession")

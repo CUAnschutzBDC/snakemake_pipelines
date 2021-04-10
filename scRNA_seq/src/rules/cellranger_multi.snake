@@ -37,7 +37,8 @@ rule merge_fastqs:
                 fq_paths = os.path.join(directory, sample + "*" + read + "*.fastq.gz")
                 fq_paths = glob.glob(os.path.abspath(fq_paths))
                 if fq_paths:
-                    if re.search("_[0-9]" + FASTQ_INFO, fq_paths[0]):
+                    print(fq_paths)
+                    if re.search(sample + "\.*_[0-9]" + FASTQ_INFO, fq_paths[0]):
                         path_dict = {}
                         fastq_count = 0
                         for x in fq_paths:
@@ -112,6 +113,8 @@ rule merge_fastqs:
         adt = params.adt_dict[wildcards.sample]
         vdj = params.vdj_dict[wildcards.sample]
         raw_dir = params.raw_data[wildcards.sample]
+        print("data_dir")
+        print(raw_dir)
         # Create symlinks for gene expression fastqs
         merged_names_gex = wildcards.sample + "_GEX"
         _merge_fastqs(rna, merged_names_gex, raw_dir)
@@ -212,7 +215,7 @@ rule create_sample_csv:
             return(R1_fqs)
 
         if params.vdj_dict[wildcards.sample]:
-        	# Create sample csv file for cellranger multi
+            # Create sample csv file for cellranger multi
             sample_csv = os.path.join(params.results, wildcards.sample + "_multi.csv")
             if os.path.isfile(sample_csv):
                 os.remove(sample_csv)
@@ -352,12 +355,13 @@ rule create_aggr_csv:
                     h5_file = os.path.join(result_dir, sample, "outs",
                         "molecule_info.h5")
                     csv_file.write("%s,%s\n" % (sample, h5_file))
-        use_samples = GROUPS[wildcards.group]
-        group_csv = os.path.join(params.results, wildcards.group + "_aggr.csv")
-        if params.vdj_dict[wildcards.sample]:
-            _aggr_multi(use_samples, group_csv, params.results)
-        else:
-            _aggr_count(use_samples, group_csv, params.results)
+        if(wildcards.group != "none"):
+            use_samples = AGGR_GROUP[wildcards.group]
+            group_csv = os.path.join(params.results, wildcards.group + "_aggr.csv")
+            if params.vdj_dict[wildcards.sample]:
+                _aggr_multi(use_samples, group_csv, params.results)
+            else:
+                _aggr_count(use_samples, group_csv, params.results)
         # Write output file
         with open(output[0], "w") as out:
             out.write("done\n")
@@ -381,7 +385,7 @@ rule run_aggr:
     threads:
         1
     run:
-        if params.group != "none":
+        if wildcards.group != "none":
             shell(
                 '''
                 cd {params.results}

@@ -74,7 +74,13 @@ for i in range(len(SAMPLES)):
 print(CHEMISTRY)
 
 # Check/set directory/file paths
-RAW_DATA_DICT = {SAMPLES[i]: RAW_DATA[i] for i in range(len(SAMPLES))}
+if len(RAW_DATA) == len(SAMPLES):
+    RAW_DATA_DICT = {SAMPLES[i]: RAW_DATA[i] for i in range(len(SAMPLES))}
+elif len(RAW_DATA) == 1:
+    RAW_DATA_DICT = {SAMPLES[i]: RAW_DATA[0] for i in range(len(SAMPLES))}
+else:
+    sys.exit("RAW_DATA must either be the same length of samples or length 1")
+
 RESULTS  = _check_path(RESULTS)
 GENOME   = _check_path(GENOME)
 
