@@ -11,7 +11,7 @@ rule count:
         output_file = "countsOutput",
         opts        = CMD_PARAMS["featureCounts"]
     log:
-        "{results}/logs/featureCounts_{sample}_{trim_method}_trim"
+        "{results}/logs/featureCounts/featureCounts_{sample}_{trim_method}_trim"
     shell:
         """
         featureCounts \
@@ -31,10 +31,8 @@ rule count_table:
         "{results}/{project}_countTable_{trim_method}_trim.txt"
     params:
         job_name    = "count_table",
-        memory      = "select[mem > 1] rusage[mem=1]",
-        trim_method = "{trim_method}",
-        results     = "{results}"
+        memory      = "select[mem > 1] rusage[mem=1]"
     log:
-        "{results}/logs/{project}_countTable_{trim_method}_trim"
+        "{results}/logs/featureCounts/{project}_countTable_{trim_method}_trim"
     script:
-        "scripts/countTable.py"
+        "../scripts/countTable.py"

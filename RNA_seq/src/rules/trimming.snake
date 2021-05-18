@@ -26,7 +26,7 @@ def _get_input(wildcards):
 rule bbduk:
     input:
         input_list   = _get_input,
-        fastqc_output = "{results}/fastqc/fastqc_{sample}_summary.txt"
+        fastqc_output = "{results}/fastqc_pre_trim/fastqc_{sample}_summary_untrimmed.txt"
     output:
         "{results}/bbduk_trim/{sample}.txt"
     params:
@@ -37,7 +37,7 @@ rule bbduk:
         job_name  = "{sample}_bbduk",
         memory    = "select[mem>4] rusage[mem=4]"
     log:
-        "{results}/logs/bbduk_{sample}"
+        "{results}/logs/trimming/bbduk_{sample}"
     run:
 
         if IS_PAIRED:
@@ -70,7 +70,7 @@ rule bbduk:
 rule cutadapt:
     input:
         input_list   = _get_input,
-        fastqc_output = "{results}/fastqc/fastqc_{sample}_summary.txt"
+        fastqc_output = "{results}/fastqc_pre_trim/fastqc_{sample}_summary_untrimmed.txt"
     output:
         "{results}/cutadapt_trim/{sample}.txt"
     params:
@@ -80,7 +80,7 @@ rule cutadapt:
         fastq1    = "{results}/cutadapt_trim/{sample}_R1_trimmed.fastq.gz",
         fastq2    = "{results}/cutadapt_trim/{sample}_R2_trimmed.fastq.gz"
     log:
-        "{results}/logs/cutadapt_{sample}"
+        "{results}/logs/trimming/cutadapt_{sample}"
     message:
         "Trimming illumina adapters for {wildcards.sample}" 
     threads:
@@ -112,7 +112,7 @@ rule cutadapt:
 rule no_trim:
     input:
         input_list = _get_input,
-        fastqc_output = "{results}/fastqc/fastqc_{sample}.txt"
+        fastqc_output = "{results}/fastqc_pre_trim/fastqc_{sample}_summary_untrimmed.txt"
     output:
         "{results}/no_trim/{sample}.txt"
     params:

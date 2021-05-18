@@ -32,7 +32,8 @@ def _get_input_star(wildcards):
 
 rule align:
     input:
-        "{results}/{trim_method}_trim/{sample}.txt"
+        "{results}/{trim_method}_trim/{sample}.txt",
+        "{results}/fastqc_{trim_method}_summary_trimmed.tsv"
     output:
         bam_output = "{results}/star_{trim_method}_trim/{sample}_Aligned.sortedByCoord.out.bam",
         log_output = "{results}/star_{trim_method}_trim/{sample}_Log.final.out"
@@ -44,42 +45,30 @@ rule align:
         output_prefix = "{results}/star_{trim_method}_trim/{sample}_",
         fastqs_trim   = _get_input_star,
         fastqs        = _get_input,
-        trim_method   = "{trim_method}"
     log:
-        "{results}/logs/star_{sample}_{trim_method}_trim"
+        "{results}/logs/star/star_{sample}_{trim_method}_trim"
     message:
         "Aligning reads for {wildcards.sample}"
     threads:
         6
     run:
-        if params.trim_method == "no":
-            shell(    
-                """
-                module load STAR/2.5.2a
-                STAR \
-                --runThreadN {threads} \
-                --genomeDir {params.genome} \
-                --sjdbGTFfile {params.gtf} \
-                --readFilesIn {params.fastqs} \
-                --readFilesCommand zcat \
-                --outSAMtype BAM SortedByCoordinate \
-                --outFileNamePrefix {params.output_prefix}
-                """
-            )
+        if wildcards.trim_method == "no":
+            fastq_files = params.fastqs
         else:
-            shell(    
-                """
-                module load STAR/2.5.2a
-                STAR \
-                --runThreadN {threads} \
-                --genomeDir {params.genome} \
-                --sjdbGTFfile {params.gtf} \
-                --readFilesIn {params.fastqs_trim} \
-                --readFilesCommand zcat \
-                --outSAMtype BAM SortedByCoordinate \
-                --outFileNamePrefix {params.output_prefix}
-                """
-            )
+            fastq_files = params.fastqs_trim
+        shell(    
+            """
+            module load STAR/2.5.2a
+            STAR \
+            --runThreadN {threads} \
+            --genomeDir {params.genome} \
+            --sjdbGTFfile {params.gtf} \
+            --readFilesIn {fastq_files} \
+            --readFilesCommand zcat \
+            --outSAMtype BAM SortedByCoordinate \
+            --outFileNamePrefix {params.output_prefix}
+            """
+        )
 
 # Create STAR alignment summary
 rule star_summary:
@@ -93,14 +82,12 @@ rule star_summary:
         "{results}/star_summary_{trim_method}_trim.tsv"
     params:
         job_name    = "star_summary",
-        memory      = "select[mem>4] rusage[mem=4]",
-        trim_method = "{trim_method}",
-        results     = "{results}"
+        memory      = "select[mem>4] rusage[mem=4]"
     log:
-        "{results}/logs/star_summary_{trim_method}_trim"
+        "{results}/logs/star/star_summary_{trim_method}_trim"
     message:
         "Creating STAR alignment summary"
     threads:
         1
     script:
-        "scripts/starStats.py"
+        "../scripts/starStats.py"

@@ -1,0 +1,81 @@
+```{r echo = F}
+
+# Strings to match samples and create labels
+gene_list <- "{{.x}}"
+
+# Create section title
+sect_title <- gene_list
+
+# Read in genes file
+gene_table <- read.xlsx(gene_file, sheet = gene_list)
+gene_ids <- gene_table$ens_id
+all_gene_ids <- lapply(gene_table$ens_id, function(x){
+  if(!is.na(x)){
+    gene_id <- rownames(assay(vsd))[grepl(x, rownames(assay(vsd)))]
+  }
+})
+
+all_gene_ids <- unlist(all_gene_ids)
+
+if(length(all_gene_ids) > 25){
+  figure_height <- length(all_gene_ids)/5
+} else if (length(all_gene_ids) > 20 && length(all_gene_ids <= 25)){
+  figure_height <- 5.5
+} else if (length(all_gene_ids) > 10 && length(all_gene_ids) <= 20) {
+  figure_height <- 5
+} else {
+  figure_height <- 4
+}
+figure_width <- 10
+figure_width_short <- 6
+```
+
+### **`r sect_title`**
+
+Heatmap of DE genes across all samples
+```{r, fig.width = figure_width, fig.height = figure_height}
+heatmap_1 <- make_heatmap(dds = dds,
+                          vsd = vsd,
+                          de_genes = all_gene_ids,
+                          treatment = treatment,
+                          control = control,
+                          group = params$sample_column,
+                          print_genenames = TRUE,
+                          cluster_cols = FALSE,
+                          save_heatmap = FALSE,
+                          color_test = sample_colors)
+print(heatmap_1)
+
+```
+
+Heatmap of DE genes across only the samples used in the comparision
+
+```{r, fig.height=figure_height, fig.width=figure_width_short}
+heatmap_2 <- make_heatmap(dds = dds,
+                          vsd = vsd,
+                          de_genes = all_gene_ids,
+                          treatment = treatment,
+                          control = control,
+                          group = params$sample_column,
+                          print_genenames = TRUE,
+                          cluster_cols = FALSE,
+                          save_heatmap = FALSE,
+                          plot_groups = c(treatment, control),
+                          color_test = sample_colors)
+print(heatmap_2)
+
+```
+
+```{r, results = "hide"}
+heatmap_dir <- file.path(params$output_dir, "images", "heatmaps")
+gene_list_print <- sub(" ", "_", gene_list)
+save_name <- paste0(gene_list_print, "_", treatment, "_", control, ".pdf")
+pdf(file.path(params$output_dir, "images", "heatmaps", save_name),
+    height = figure_height, width = 10)
+grid::grid.newpage()
+grid::grid.draw(heatmap_1$gtable)
+grid::grid.newpage()
+grid::grid.draw(heatmap_2$gtable)
+dev.off()
+
+```

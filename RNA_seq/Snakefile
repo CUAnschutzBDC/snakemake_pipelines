@@ -63,13 +63,9 @@ if len(SPIKE_SAMPLES) > 0:
 # Final output files
 rule all:
     input:
-    	# QC output
-    	expand(
-    		"{results}/fastqc/fastqc_{sample}_summary.txt",
-    		results = RESULTS, sample = SAMPLES),
         # Fastqc summary
         expand(
-            "{results}/fastqc_summary.tsv",
+            "{results}/fastqc_pre_trim_summary_untrimmed.tsv",
             results = RESULTS
             ),
         # Output of adaptor trimming
@@ -77,6 +73,11 @@ rule all:
             "{results}/{trim_method}_trim/{sample}.txt",
             results = RESULTS, sample = SAMPLES,
             trim_method = TRIM_METHOD),
+        # Fastqc summary
+        expand(
+            "{results}/fastqc_{trim_method}_summary_trimmed.tsv",
+            results = RESULTS, trim_method = TRIM_METHOD
+            ),
         # STAR output
         expand(
             "{results}/star_summary_{trim_method}_trim.tsv",

@@ -22,7 +22,7 @@ def _get_input(wildcards):
 def _get_directories(wildcards):
     # Grab path of the fastq file
     fastq1 = SAMPLE_LIST.loc[wildcards.sample, "fastq1"]
-    path = wildcards.results + "/fastqc/"
+    path = wildcards.results + "/fastqc_pre_trim/"
     data_dir1 = re.sub(r'\.fastq\.gz', '_fastqc.zip', fastq1)
     data_dir1 = path + data_dir1
     if IS_PAIRED:
@@ -34,19 +34,44 @@ def _get_directories(wildcards):
     else:
         return(data_dir1)
 
+# Function to return paths of input files
+def _get_directories_trim(wildcards):
+    # Grab path of the fastq file
+    data_dir1 = wildcards.sample + "_R1_trimmed_fastqc.zip"
+    path = wildcards.results + "/fastqc_" + wildcards.trim_method + "/"
+    data_dir1 = path + data_dir1
+    if IS_PAIRED:
+        # Grab path of second read
+        data_dir2 = wildcards.sample + "_R2_trimmed_fastqc.zip"
+        data_dir2 = path + data_dir2
+        return(data_dir1, data_dir2)
+    else:
+        return(data_dir1)
+
+def _get_input_trimmed(wildcards):
+    # Grab path of the fastq file
+    fastq1 = (wildcards.results + "/" + wildcards.trim_method + "_trim/" +
+        wildcards.sample + "_R1_trimmed.fastq.gz")
+    if IS_PAIRED:
+        # Grab path of second read
+        fastq2 = (wildcards.results + "/" + wildcards.trim_method + "_trim/" +
+            wildcards.sample + "_R2_trimmed.fastq.gz")
+        return(fastq1, fastq2)
+    else:
+        return(fastq1)
+
 rule fastqc:
     input:
         input_list = _get_input
     output:
-        file      = "{results}/fastqc/fastqc_{sample}_summary.txt"
+        file      = "{results}/fastqc_pre_trim/fastqc_{sample}_summary_untrimmed.txt"
     params:
-        output_dir  = "{results}/fastqc/",
-        sample_name = "{sample}",
+        output_dir  = "{results}/fastqc_pre_trim/",
         job_name    = "{sample}_fastqc",
         memory      = "select[mem>16] rusage[mem=16]",
         directories = _get_directories
     log:
-        "{results}/logs/fastqc_{sample}"
+        "{results}/logs/fastqc_pre_trim/fastqc_{sample}_untrimmed"
     shell:
         """
         fastqc {input} --outdir {params.output_dir}
@@ -59,20 +84,52 @@ rule fastqc:
         done
         """    
 
+rule fastqc_trim:
+    input:
+        "{results}/{trim_method}_trim/{sample}.txt"
+    output:
+        file      = "{results}/fastqc_{trim_method}/fastqc_{sample}_summary_trimmed.txt"
+    params:
+        output_dir  = "{results}/fastqc_{trim_method}/",
+        job_name    = "{sample}_fastqc",
+        memory      = "select[mem>16] rusage[mem=16]",
+        directories = _get_directories_trim,
+        input_list  = _get_input_trimmed
+    log:
+        "{results}/logs/fastqc_{trim_method}/fastqc_{sample}_trimmed"
+    run:
+        if wildcards.trim_method == "no":
+            with open(output[0], "w") as out:
+                out.write("no trimming done\n")
+        else:
+            shell(
+                """
+                fastqc {params.input_list} --outdir {params.output_dir}
+                for dir in {params.directories};
+                do
+                    name=$(basename -s .zip $dir)
+
+                    unzip -p $dir $name/summary.txt \
+                        >> {output}
+                done
+                """   
+            )
+
+
 # Combine FastQC summaries
 rule fastqc_summary:
     input:
         expand(
-            "{results}/fastqc/fastqc_{sample}_summary.txt",
+            "{results}/fastqc_{{trim_method}}/fastqc_{sample}_summary_{{trim}}.txt",
             results = RESULTS, sample = SAMPLES
         )
     output:
-        "{results}/fastqc_summary.tsv"
+        "{results}/fastqc_{trim_method}_summary_{trim}.tsv"
     params:
         job_name = "fastqc_summary",
         memory   = "select[mem>4] rusage[mem=4]"
     log:
-        "{results}/logs/fastqc/summary"
+        "{results}/logs/fastqc_{trim_method}/summary_{trim}"
     message:
         "Creating FastQC summary"
     threads:

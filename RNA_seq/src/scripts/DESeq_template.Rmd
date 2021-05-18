@@ -1,0 +1,139 @@
+```{r echo = F}
+
+# Strings to match samples and create labels
+if(compare_contrast){
+  comparison <- c("{{.x[1]}}", "{{.x[2]}}")
+
+  control <- comparison[1]
+  treatment <- comparison[2]
+  # Create section title
+  sect_title <- paste0(treatment, " vs ", control)
+
+} else if(compare_name) {
+  name <- "{{.x[1]}}"
+  treatment <- "{{.x[3]}}"
+  control <- "{{.x[2]}}"
+  sect_title <- paste0(treatment, " vs ", control)
+} else {
+  control <- "{{.x[1]}}"
+  treatment <- "{{.x[2]}}"
+  sect_title <- "{{.x[3]}}"
+  var1 <- "{{.x[4]}}"
+  var2 <- "{{.x[5]}}"
+}
+
+
+
+```
+
+## **`r sect_title`**
+
+```{r}
+# Extract DE genes
+if(compare_contrast){
+  sig_genes <- get_de(dds, column = params$sample_column, var1 = treatment,
+                      var2 = control, write_csv = T, p_value = params$DE_alpha,
+                      lfc = 0, output_dir = params$output_dir,
+                      lfc_shrink = T)
+
+  sig_genes_high_lfc <- get_de(dds, column = params$sample_column,
+                               var1 = treatment, var2 = control,
+                               write_csv = F, p_value = params$DE_alpha,
+                               lfc = params$DE_lfc,
+                               lfc_shrink = T)
+} else if(compare_name) {
+  sig_genes <- get_de(dds, name = name, write_csv = T,
+                      p_value = params$DE_alpha,
+                      lfc = 0, output_dir = params$output_dir,
+                      lfc_shrink = T)
+
+  sig_genes_high_lfc <- get_de(dds, name = name,
+                             write_csv = F, p_value = params$DE_alpha,
+                             lfc = params$DE_lfc,
+                             lfc_shrink = T)
+} else {
+  sig_genes <- get_de(dds, column = NULL, var1 = var1,
+                      var2 = var2, write_csv = T, p_value = params$DE_alpha,
+                      lfc = 0, output_dir = params$output_dir,
+                      lfc_shrink = T)
+
+  sig_genes_high_lfc <- get_de(dds,column = NULL, var1 = var1, var2 = var2,
+                               write_csv = F, p_value = params$DE_alpha,
+                               lfc = params$DE_lfc,
+                               lfc_shrink = T)
+}
+
+DE_genes_n <- nrow(sig_genes$DE_genes)
+```
+
+### DEseq2 analysis
+**`r format(DE_genes_n, big.mark = ",")`** differentially expressed genes were identified using the `DESeq2` package.
+
+Differentially expressed genes are labeled on the MA plot in blue.
+```{r, fig.width = 6, fig.height = 4}
+plotMA(sig_genes$DE_df, main = sect_title)
+```
+
+### Heatmaps
+Heatmap of DE genes across all samples
+```{r, fig.width = 6, fig.height = 4}
+heatmap_dir <- file.path(params$output_dir, "images", "heatmaps")
+heatmap <- make_heatmap(dds = dds,
+                        vsd = vsd,
+                        de_genes = sig_genes$DE_genes,
+                        treatment = treatment,
+                        control = control,
+                        group = params$sample_column,
+                        print_genenames = FALSE,
+                        cluster_cols = FALSE,
+                        save_heatmap = TRUE,
+                        output_dir = heatmap_dir,
+                        color_test = sample_colors)
+print(heatmap)
+
+```
+
+Heatmap of DE genes across only the samples used in the comparision
+
+```{r, fig.width = 6, fig.height = 4}
+heatmap_dir <- file.path(params$output_dir, "images", "heatmaps")
+heatmap <- make_heatmap(dds = dds,
+                        vsd = vsd,
+                        de_genes = sig_genes$DE_genes,
+                        treatment = treatment,
+                        control = control,
+                        group = params$sample_column,
+                        print_genenames = FALSE,
+                        cluster_cols = FALSE,
+                        save_heatmap = FALSE,
+                        plot_groups = c(treatment, control),
+                        color_test = sample_colors)
+print(heatmap)
+
+```
+
+### Gene Set Enrichment
+
+For Gene Set Enrichment, I used `gprofiler2` It uses a hypergeometric test to determine overrepresentation of genes from different categories.
+
+```{r, fig.height = 30, fig.width = 12}
+all_gene_ens <- sub(".*_ENSMUSG", "ENSMUSG", rownames(dds))
+
+result <- run_gprofiler_all(gene_table = sig_genes$DE_genes,
+                            pos_name = treatment,
+                            neg_name = control,
+                            custom_bg = all_gene_ens,
+                            save_dir = file.path(params$output_dir, "GSE_files"),
+                            plot_dir = file.path(params$output_dir, "images",
+                                                 "GSE"),
+                            ordered_query = FALSE)
+
+plots <- result$plots
+
+plot_grid(plots$GOBP, plots$GOMF, plots$GOCC, plots$KEGG,
+          nrow = 4,
+          ncol = 1,
+          align = "v",
+          axis = "tb")
+
+```
