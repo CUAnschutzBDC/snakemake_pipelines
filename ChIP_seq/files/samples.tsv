@@ -1,0 +1,4 @@
+sample	fastq1	fastq2	data_dir	control	replicate
+MYC	MYC_S46_L002_R1_001.fastq.gz	MYC_S46_L002_R2_001.fastq.gz	raw_data/210427_A00405_0394_AH5NMGDRXY	IgG,Input	1
+Input	Input_S44_L002_R1_001.fastq.gz	Input_S44_L002_R2_001.fastq.gz	raw_data/210427_A00405_0394_AH5NMGDRXY	None	1
+IgG	IgG_S45_L002_R1_001.fastq.gz	IgG_S45_L002_R2_001.fastq.gz	raw_data/210427_A00405_0394_AH5NMGDRXY	None	1

@@ -1,0 +1,61 @@
+##### aligning information #####
+
+# Sample sheet. This is the path to the sample sheet. Should be a tab delimited
+# tsv file with the one column titled "sample" and a second column titled
+# "fastq1" with filenames relating to each sample. If paired end sequencing was
+# done, another columen should be titled "fastq2" with filenames for read 2.
+SAMPLE_TABLE:
+  "files/samples.tsv"
+
+# Project the name of the project
+PROJECT:
+  "RA_chip"
+
+# Reference. This should be the path to a directory created using bowtie2. Include
+# The prefix of the aligment files
+
+GENOME:
+  /beevol/home/rbilab/ref/indices/bowtie2/mouse/GRCm38/GRCm38
+
+ANNOTATION:
+  mm10
+
+# Path to results directory
+RESULTS:
+  "results"
+
+# Path to adaptors file. This is included in the bbtools package under .../bbmap/resources/adaptors.fa
+# Not necessary if not using bbduk for trimming
+ADAPTORS:
+
+
+# Trim method, can be "bbduk", "cutadapt", or "no"
+TRIM_METHOD:
+  "cutadapt"
+
+# Genome size information can be found here: https://pypi.org/project/MACS2/
+# Some examples
+# hs: 2.7e9
+# mm: 1.87e9
+# ce: 9e7
+# dm: 1.2e8
+
+GENOME_SIZE:
+  1.87e9
+
+# Path to sandbox folder for data upload
+SANDBOX:
+    "amc-sandbox.ucdenver.edu://data/home/wellskri/public_html/sussel/RA_chip"
+
+# Parameters for paired end or single end experiments
+PE:
+    cutadapt:      " -m 20 -a 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCA' -A 'AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT' "
+    salmon:        " --validateMappings --libType 'A' --numBootstraps 50 "
+    bbduk:         "ktrim=r k=23 mink=11 hdist=1 tpe tbo"
+
+
+SE:
+    cutadapt:      " -m 20 -a 'AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC' "
+    salmon:        " --validateMappings --fldMean 200 --fldSD 20 --libType 'A' --numBootstraps 50 "
+    bbduk:         "ktrim=r k=23 mink=11 hdist=1 tpe tbo"
+

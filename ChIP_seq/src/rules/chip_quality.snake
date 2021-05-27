@@ -1,0 +1,46 @@
+# Calculate quality metrics
+
+rule make_sample_sheet:
+    input:
+        expand(
+            "{results}/macs2_{trim_method}_trim/{sample}_peaks.narrowPeak",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLE_CONTROL.keys()
+            )
+    output:
+        "{results}/quality_sample_sheet_{trim_method}.csv"
+    params:
+        job_name      = "sample_sheet",
+        memory        = "select[mem>5] rusage[mem=5]"
+    log:
+       "{results}/logs/quality/{trim_method}_trim"
+    run:
+        with open(output[0], "w") as outfile:
+            outfile.write("SampleID,Tissue,Factor,Condition,Replicate,bamReads,ControlID,bamControl,Peaks,PeakCaller\n")        
+            for sample in SAMPLE_CONTROL.keys():
+                sample_test = SAMPLE_CONTROL[sample]
+                control_sample = re.sub(r'{}_'.format(sample_test), "", sample)
+                replicate = int(SAMPLE_LIST.loc[[sample_test]].replicate.values)
+                if "Tissue" in SAMPLE_LIST.columns:
+                    tissue = str(SAMPLE_LIST.loc[[sample_test]].Tissue.values)
+                else:
+                    tissue = "NA"
+
+                if "Factor" in SAMPLE_LIST.columns:
+                    factor = str(SAMPLE_LIST.loc[[sample_test]].Factor.values)
+                else:
+                    factor = "NA"
+
+                if "Condition" in SAMPLE_LIST.columns:
+                    condition = str(SAMPLE_LIST.loc[[sample_test]].Condition.values)
+                else:
+                    condition = "NA"
+                bam_reads = ("/bowtie2_" + wildcards.trim_method +
+                    "_trim/" + sample_test + "_Aligned.SortedByCoord.unique.out.bam")
+                control_reads = ("/bowtie2_" + wildcards.trim_method +
+                    "_trim/" + control_sample + "_Aligned.SortedByCoord.unique.out.bam")
+                peaks = ("/macs2_" + wildcards.trim_method +
+                    "_trim/" + sample + "_peaks.narrowPeak")
+                peak_caller = "macs2"
+                outfile.write("{},{},{},{},{},{},{},{},{},{}\n".format(sample_test,
+                    str(tissue), str(factor), str(condition), str(replicate),
+                    bam_reads, control_sample, control_reads, peaks, peak_caller))

@@ -1,0 +1,89 @@
+---
+title: "RAR chip"
+author: "Kristen Wells"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    highlight: "tango"
+    df_print: "paged"
+    code_folding: "hide"
+    self_contained: true
+params:
+  genome: "GRCm38"
+  annotation: "mm10"
+  chipqc_samples: "results/quality_sample_sheet_cutadapt.csv"
+  project: "RA_chip"
+  
+---
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/Users/wellskr/Documents/Analysis/Lori_sussel/David_Lorberbaum/Sussel_RA_chip/")
+
+# Set default chunk options
+knitr::opts_chunk$set(
+  message = F, 
+  warning = F,
+  comment = ""
+)
+```
+
+```{r, packages}
+library(ChIPseeker)
+library(dplyr)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+```
+
+```{r read-in-data}
+sample_sheet <- params$chipqc_samples
+
+annotation <- params$annotation
+
+project <- params$project
+
+
+directory <- "results/R_analysis/images"
+# Read in data
+samples <- read.csv(sample_sheet)
+
+samples$bamReads <- paste0(getwd(), "/results", samples$bamReads)
+samples$bamControl <- paste0(getwd(), "/results", samples$bamControl)
+samples$Peaks <- paste0(getwd(), "/results", samples$Peaks)
+#samples$ScoreCol <- 5
+#samples$LowerBetter <- FALSE
+
+peak_file <- samples %>%
+  dplyr::filter(ControlID == "Input") %>%
+  dplyr::select(Peaks)
+
+# Read in peaks
+peak <- readPeakFile(peak_file[1,1])
+
+# Name meta data columns based on Macs2 output
+colnames(mcols(peak)) <- c("name", "score", "strond",
+                           "signalValue", "pValue", "qvalue", "peak")
+
+# Remove extra chromosomes
+peak <- peak[!grepl("GL|JH", seqnames(peak)),]
+peak <- dropSeqlevels(peak,
+                      value = seqlevels(peak)[grepl("GL|JH", seqlevels(peak))])
+
+# Rename chromosomes
+newStyle <- mapSeqlevels(seqlevels(peak), "UCSC")
+peak <- renameSeqlevels(peak, newStyle)
+```
+
+```{r chip-chromosomes, fig.height=8, fig.width=8}
+# Plot coverage across chromosomes, sizing by the macs2 score
+covplot(peak, weightCol="score")
+```
+
+```{r}
+txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
+
+promoter <- getPromoters(TxDb = txdb, upstream=3000, downstream=3000)
+
+tagMatrix <- getTagMatrix(peak, windows=promoter, weightCol = "score")
+
+```

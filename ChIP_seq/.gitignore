@@ -1,0 +1,16 @@
+.*
+!.gitignore
+!.gitattributes
+logs
+results/*
+!results/*.tsv
+!results/*.csv
+!results/*.txt
+raw_data
+!results/fastqc
+!results/fastqc/*.html
+results/fastqc/*.txt
+results/fastqc/*.zip
+src/rules/scripts/*.html
+.Rproj.user
+files/*.bed

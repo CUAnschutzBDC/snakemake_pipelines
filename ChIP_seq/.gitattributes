@@ -1,0 +1,4 @@
+results/fastqc/* linguist-generated
+results/R_analysis/*.html linguist-generated
+src/rules/scripts/*.html linguist-generated
+*.snake linguist-language=Python

@@ -1,0 +1,111 @@
+""" Snake pipeline for running RNAseq analysis """
+
+# Configure shell for all rules 
+shell.executable("/bin/bash")
+shell.prefix("set -o nounset -o pipefail -o errexit -x; ")
+import subprocess # check if necessary
+import glob
+import os 
+import re
+import pandas as pd
+
+
+# Parameters from config.yaml
+SAMPLE_TABLE = config["SAMPLE_TABLE"]
+GENOME       = config["GENOME"]
+RESULTS      = config["RESULTS"]
+ADAPTORS     = config["ADAPTORS"]
+TRIM_METHOD  = config["TRIM_METHOD"]
+PROJECT      = config["PROJECT"]
+GENOME_SIZE  = config["GENOME_SIZE"]
+ANNOTATION   = config["ANNOTATION"]
+SANDBOX      = config["SANDBOX"]
+
+# Pull out sample names and fastq files
+SAMPLE_LIST = pd.read_table(config["SAMPLE_TABLE"]).set_index("sample", drop = False)
+print(SAMPLE_LIST)
+SAMPLES = SAMPLE_LIST.index.values
+IS_PAIRED = "fastq2" in SAMPLE_LIST.columns
+
+if IS_PAIRED:
+    CMD_PARAMS = config["PE"]
+else:
+    CMD_PARAMS = config["SE"]
+
+# Function to check paths for input files/directories
+def _check_path(path):
+    if os.path.exists(path):
+        return os.path.abspath(path)
+    else:
+        sys.exit("ERROR: " + path + " does not exist.")
+
+
+
+# Set sample/group names
+SAMPLES = [x.strip() for x in SAMPLES]
+
+# Get control information
+SAMPLE_CONTROL = {}
+for sample, control in zip(SAMPLE_LIST.index.values, SAMPLE_LIST.control.values):
+    if control != "None":
+        for one_control in control.split(","):
+            SAMPLE_CONTROL[sample + "_" + one_control] = sample
+
+# NOTE: now when running MACS2... expand("...{sample}...", sample = SAMPLE_CONTROL.keys())
+
+# Check/set directory/file paths
+RESULTS  = _check_path(RESULTS)
+
+
+# Final output files
+rule all:
+    input:
+    	# QC output
+    	expand(
+    		"{results}/fastqc/fastqc_{sample}_summary.txt",
+    		results = RESULTS, sample = SAMPLES),
+        # Fastqc summary
+        expand(
+            "{results}/fastqc_summary.tsv",
+            results = RESULTS
+            ),
+        # Output of adaptor trimming
+        expand(
+            "{results}/{trim_method}_trim/{sample}.txt",
+            results = RESULTS, sample = SAMPLES,
+            trim_method = TRIM_METHOD),
+        # bowtie2
+        expand(
+            "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.out.sam",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
+            ),
+        expand(
+            "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.SortedByCoord.unique.out.bam",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
+            ),
+        # Call peaks
+        expand(
+            "{results}/macs2_{trim_method}_trim/{sample}_peaks.narrowPeak",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLE_CONTROL.keys()
+            ),
+        # Make quality sample sheet
+        expand(
+            "{results}/quality_sample_sheet_{trim_method}.csv",
+            results = RESULTS, trim_method = TRIM_METHOD    
+            ),
+        # Make bigwigs
+        expand(
+           "{results}/bigwig_{trim_method}_trim/transfer_done.txt",
+           results = RESULTS, trim_method = TRIM_METHOD
+           )
+
+        
+
+
+# Snakes to run
+include: "src/rules/fastqc.snake"
+include: "src/rules/trimming.snake"
+include: "src/rules/bowtie.snake"
+include: "src/rules/macs2.snake"
+include: "src/rules/chip_quality.snake"
+include: "src/rules/make_bigwig.snake"
