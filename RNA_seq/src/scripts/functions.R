@@ -433,3 +433,153 @@ make_plots <- function(index, deseq_obj, intgroup, plot_ggplot,
     return(counts_plot)
   }
 }
+
+
+hypergeometric_test <- function(dds, gene_list, DE_table,
+                                DE_p_cutoff = 0.05, DE_lfc_cutoff = 0.5,
+                                correction_method = "fdr"){
+  # Pull out gene list
+  hypergeometric_list <- lapply(names(gene_list), function(list_name){
+    # Pull out one gene list
+    gene_list_one <- gene_list[[list_name]]
+    
+    DE_list <- lapply(unique(DE_table$comparison), function(comparison_name){
+      # Pull out one DE test and only sig genes
+      DE_one <- DE_table %>%
+        dplyr::filter(comparison == comparison_name &
+                        padj < DE_p_cutoff &
+                        lfcSE > DE_lfc_cutoff)
+      
+      # Find number of overlaps
+      x <- length(intersect(gene_list_one, DE_one$gene_name))
+      
+      # Length of gene list that overlaps with gene in object (total possible genes 
+      # to see in comparison)
+      all_genes <- rownames(dds)
+      all_genes <- sub("_ENSMUS.*", "", all_genes)
+      m <- length(intersect(gene_list_one, all_genes))
+      
+      # All genes from object not in list
+      n <- length(setdiff(all_genes, gene_list_one))
+      
+      # Total number of genes
+      total <- length(all_genes)
+      
+      # Length of the DE list
+      k <- length(DE_one$gene_name)
+      
+      # Calculated expected number of genes
+      expected_num <- (m*k)/total
+      
+      # Calcluate the representation factor
+      representation <- x/expected_num
+      
+      # Calculate the p_val
+      p_val <- dhyper(x, m, n, k)
+      
+      return_df <- data.frame(comparison = comparison_name,
+                              gene_list = list_name,
+                              overlaps = x,
+                              gene_list_len = m,
+                              DE_length = k,
+                              background_len = n,
+                              total_genes = total,
+                              expected_overlap = expected_num,
+                              overrepresentation = representation,
+                              p_val = p_val)
+      
+      return(return_df)
+    })
+    full_return <- do.call(rbind, DE_list)
+    return(full_return)
+  })
+  
+  full_hypergeometric <- do.call(rbind, hypergeometric_list)
+  
+  # Calculate adjusted p values
+  full_hypergeometric$p_adj <- p.adjust(full_hypergeometric$p_val,
+                                        method = correction_method)
+  
+  return(full_hypergeometric)
+}
+
+
+plot_hypergeom <- function(hypergeom_output, colors = NULL, meta_df = NULL,
+                           color_list = NULL,
+                           cluster_rows = FALSE, cluster_cols = FALSE,
+                           color_palette = NULL,
+                           breaks = FALSE){
+  
+  hypergeom_output$log_adj_pval <- -log10(hypergeom_output$p_adj)
+  
+  hypergeom_output_w <- hypergeom_output %>%
+    dplyr::select(c(comparison, gene_list, log_adj_pval)) %>%
+    tidyr::pivot_wider(names_from = gene_list, values_from = log_adj_pval) %>%
+    base::data.frame()
+  
+  rownames(hypergeom_output_w) <- hypergeom_output_w$comparison
+  hypergeom_output_w$comparison <- NULL
+  hypergeom_output_w <- t(hypergeom_output_w)
+  
+  if(is.null(meta_df)){
+    # Make a df for the column labeling
+    sample_info <- data.frame(comparison = colnames(hypergeom_output_w))
+    rownames(sample_info) <- sample_info$comparison
+    # Add levels
+    if(is.null(levels(sample_info$comparison))){
+      sample_info$comparison <- factor(sample_info$comparison)
+    }
+    if(is.null(colors)){
+      colors <- brewer.pal(length(levels(sample_info$comparison)), "Set1")
+      names(colors) <- levels(sample_info$comparison)
+    } 
+    # make a list for the column labeing
+    coloring <- list(colors)
+    names(coloring) <- "cluster"
+  } else {
+    # The sample info and color list must be provided
+    sample_info <- meta_df
+    coloring <- color_list
+  }
+  
+  # Set comparison order
+  comparison_order <- levels(sample_info$comparison)
+  # Colors for heatmap (from the ArchR package)
+  if(is.null(color_palette)){
+    color_palette <- c("#352A86", "#343DAE", "#0262E0", "#1389D2", "#2DB7A3",
+                       "#A5BE6A", "#F8BA43", "#F6DA23", "#F8FA0D")
+  } else if (color_palette == "blueRed") {
+    pal <- colorRampPalette(c("blue", "white", "red"))
+    color_palette <- pal(30)
+  }
+  
+  
+  if(!cluster_cols){
+    sample_info <- sample_info[order(match(sample_info$comparison,
+                                           comparison_order)), , drop = FALSE]
+    if(!identical(colnames(hypergeom_output_w), rownames(sample_info))){
+      hypergeom_output_w <- hypergeom_output_w[ , rownames(sample_info)]
+    }
+  }
+  
+  if((breaks)){
+    quantile_breaks <- function(xs, n = 30) {
+      breaks <- quantile(xs, probs = seq(0, 1, length.out = n))
+      breaks[!duplicated(breaks)]
+    }
+    
+    breaks <- quantile_breaks(hypergeom_output_w, n = 30)
+  } else {
+    breaks <- NULL
+  }
+  
+  heatmap <- pheatmap(hypergeom_output_w, cluster_rows = cluster_rows,
+                      cluster_cols = cluster_cols,
+                      show_rownames = TRUE, 
+                      show_colnames = TRUE, annotation_col = sample_info,
+                      annotation_colors = coloring, color = color_palette,
+                      border_color = NA, clustering_method = "complete",
+                      silent = TRUE, breaks = breaks)
+  return(heatmap)
+}
+
