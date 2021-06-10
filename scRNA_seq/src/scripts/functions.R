@@ -1445,7 +1445,8 @@ pairwise_markers <- function(seurat_object, meta_col,
   })
   all_de <- do.call(rbind, all_de)
   
-  all_de <- dplyr::filter(p_val_adj < 0.05)
+  all_de <- all_de %>%
+    dplyr::filter(p_val_adj < 0.05)
   
   return(all_de)
   
