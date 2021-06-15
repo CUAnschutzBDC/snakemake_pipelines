@@ -28,35 +28,58 @@ create_seurat_object <- function(sample, count_path, ADT = TRUE, hashtag = TRUE,
   return(sample_object)
 }
 
-PCA_dimRed <- function(sample_object, assay = "RNA"){
+PCA_dimRed <- function(sample_object, assay = "RNA",
+                       reduction_name = NULL){
   if(assay == "RNA"){
+    if(is.null(reduction_name)){
+      reduction_name = "pca"
+    }
     DefaultAssay(sample_object) = "RNA"
     sample_object <- RunPCA(sample_object,
-                            features = VariableFeatures(object = sample_object))
+                            features = VariableFeatures(object = sample_object),
+                            reduction.name = reduction_name)
   } else if(assay == "ADT"){
+    if(is.null(reduction_name)){
+      reduction_name = "apca"
+    }
     DefaultAssay(sample_object) <- "ADT"
     # Use all ADTS for dimensional reduction
     VariableFeatures(sample_object) <- rownames(sample_object[["ADT"]])
-    sample_object <- ScaleData(sample_object) %>% 
-      RunPCA(reduction.name = "apca")
+    sample_object <- Seurat::ScaleData(sample_object) %>% 
+      Seurat::RunPCA(reduction.name = "apca")
   } else if(assay == "SCT"){
+    if(is.null(reduction_name)){
+      reduction_name = "sctpca"
+    }
     DefaultAssay(sample_object) = "SCT"
+    sample_object <- Seurat::RunPCA(sample_object,
+                                    features =
+                                      VariableFeatures(
+                                        object = sample_object),
+                                    reduction.name = "sctpca")
+  } else if(assay == "integrated"){
+    DefaultAssay(sample_object) = "integrated"
     sample_object <- RunPCA(sample_object,
-                            features = VariableFeatures(object = sample_object),
-                            reduction.name = "sctpca")
+                            features = VariableFeatures(object = sample_object))
   }
   return(sample_object)
 }
 
-plot_PCA <- function(sample_object, HTO = FALSE, assay = "RNA"){
-  if(assay == "RNA"){
+plot_PCA <- function(sample_object, HTO = FALSE, assay = "RNA",
+                     jackstraw = TRUE, reduction = NULL){
+  if(!is.null(reduction)){
+    reduction <- reduction
+  } else if(assay == "RNA"){
     reduction <- "pca"
   } else if(assay == "ADT"){
     reduction <- "apca"
   } else if(assay == "SCT"){
     reduction <- "sctpca"
+  } else if(assay == "integrated"){
+    reduction <- "pca"
   } else {
-    stop("'reduction' must be 'ADT', 'SCT', or 'RNA'")
+    stop("'assay' must be 'ADT', 'SCT', 'integrated', or 'RNA' or
+         reduction must be supplied")
   }
   plots <- list()
   plots$pca_loadings <- VizDimLoadings(sample_object, dims = 1:2,
@@ -74,7 +97,7 @@ plot_PCA <- function(sample_object, HTO = FALSE, assay = "RNA"){
                                      col_by = "HTO_classification")
   }
   
-  if(assay == "RNA"){
+  if(assay == "RNA" && jackstraw){
     sample_object <- JackStraw(sample_object, num.replicate = 100,
                                reduction = reduction)
     sample_object <- ScoreJackStraw(sample_object, dims = 1:20)
@@ -86,16 +109,26 @@ plot_PCA <- function(sample_object, HTO = FALSE, assay = "RNA"){
 
 group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
                         nPCs = 10, resolution = 0.8, assay = "RNA",
-                        HTO = FALSE, ...){
+                        HTO = FALSE, reduction = NULL, ...){
   if(assay == "RNA"){
+    if(is.null(reduction)){
+      reduction <- "pca"
+      key <- "rna"
+    } else {
+      key <- reduction
+    }
     DefaultAssay(sample_object) = "RNA"
-    save_plot <- paste0(save_dir, "images/rnaUMAP_", sample_name, ".pdf")
+    if(!is.null(save_dir)){
+      save_plot <- paste0(save_dir, "images/rnaUMAP_", sample_name, ".pdf")
+    }
     sample_object <- FindNeighbors(sample_object, dims = 1:nPCs,
-                                   reduction = "pca")
+                                   reduction = reduction)
     sample_object <- FindClusters(sample_object, resolution = resolution)
     sample_object <- RunUMAP(sample_object,
-                             metric = "correlation", dims = 1:nPCs, reduction = "pca",
-                             assay = assay, reduction.key = "rnaUMAP_", reduction.name = "rna.umap")
+                             metric = "correlation", dims = 1:nPCs,
+                             reduction = reduction, assay = assay,
+                             reduction.key = paste0(key, "UMAP_"),
+                             reduction.name = paste0(key, ".umap"))
     sample_object[["RNA_cluster"]] <- Idents(sample_object)
     col_by_list <- c("RNA_cluster", "orig.ident")
     if(HTO){
@@ -107,18 +140,26 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
     plot_list <- plotDimRed(sample_object = sample_object,
                             save_plot = save_plot,
                             col_by = col_by_list, return_plot = TRUE,
-                            plot_type = "rna.umap", ...)
+                            plot_type = paste0(key, ".umap"), ...)
   } else if (assay == "ADT"){
+    if(is.null(reduction)){
+      reduction <- "apca"
+      key <- "adt"
+    } else {
+      key <- reduction
+    }
     DefaultAssay(sample_object) <- "ADT"
     save_plot <- paste0(save_dir, "images/adtUMAP_", sample_name, ".pdf")
     sample_object <- FindNeighbors(sample_object,
                                    features = rownames(sample_object),
-                                   dims = 1:nPCs, reduction = "apca")
+                                   dims = 1:nPCs, reduction = reduction)
     sample_object <- FindClusters(sample_object, resolution = resolution,
                                   graph.name = "ADT_snn")
     sample_object <- RunUMAP(sample_object,
-                             metric = "correlation", dims = 1:nPCs, reduction = "apca",
-                             assay = assay, reduction.key = "adtUMAP_", reduction.name = "adt.umap")
+                             metric = "correlation", dims = 1:nPCs,
+                             reduction = reduction, assay = assay,
+                             reduction.key = paste0(key, "UMAP_"),
+                             reduction.name = paste0(key, ".umap"))
     sample_object[["ADT_cluster"]] <- Idents(sample_object)
     col_by_list <- c("ADT_cluster", "orig.ident")
     if(HTO){
@@ -130,16 +171,24 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
     plot_list <- plotDimRed(sample_object = sample_object,
                             save_plot = save_plot,
                             col_by = col_by_list, return_plot = TRUE,
-                            plot_type = "adt.umap", ...)
+                            plot_type = paste0(key, ".umap"), ...)
   } else if(assay == "SCT"){
+    if(is.null(reduction)){
+      reduction <- "sctpca"
+      key <- "rnasct"
+    } else {
+      key <- reduction
+    }
     DefaultAssay(sample_object) = "SCT"
     save_plot <- paste0(save_dir, "images/rnasctUMAP_", sample_name, ".pdf")
-    sample_object <- FindNeighbors(sample_object, reduction = "sctpca",
+    sample_object <- FindNeighbors(sample_object, reduction = reduction,
                                    dims = 1:nPCs)
     sample_object <- FindClusters(sample_object, resolution = resolution)
     sample_object <- RunUMAP(sample_object,
-                             metric = "correlation", dims = 1:nPCs, reduction = "sctpca",
-                             assay = assay, reduction.key = "rnasctUMAP_", reduction.name = "rna_sct.umap")
+                             metric = "correlation", dims = 1:nPCs,
+                             reduction = reduction,  assay = assay,
+                             reduction.key = paste0(key, "UMAP_"),
+                             reduction.name = paste0(key, ".umap"))
     sample_object[["SCT_cluster"]] <- Idents(sample_object)
     col_by_list <- c("SCT_cluster", "orig.ident")
     if(HTO){
@@ -151,15 +200,44 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
     plot_list <- plotDimRed(sample_object = sample_object,
                             save_plot = save_plot,
                             col_by = col_by_list, return_plot = TRUE,
-                            plot_type = "rna_sct.umap", ...)
+                            plot_type = paste0(key, ".umap"), ...)
+  } else if(assay == "integrated"){
+    if(is.null(reduction)){
+      reduction <- "pca"
+    }
+    DefaultAssay(sample_object) = "integrated"
+    if(!is.null(save_dir)){
+      save_plot <- paste0(save_dir, "images/integratedUMAP_", sample_name, ".pdf")
+    }
+    sample_object <- FindNeighbors(sample_object, dims = 1:nPCs,
+                                   reduction = reduction)
+    sample_object <- FindClusters(sample_object, resolution = resolution)
+    sample_object <- RunUMAP(sample_object,
+                             metric = "correlation", dims = 1:nPCs,
+                             reduction = reduction, assay = assay,
+                             reduction.key = "integratedUMAP_",
+                             reduction.name = "integrated.umap")
+    sample_object[["integrated_cluster"]] <- Idents(sample_object)
+    col_by_list <- c("integrated_cluster", "orig.ident")
+    if(HTO){
+      col_by_list <- c(col_by_list, "HTO_classification")
+    }
+    if(is.null(save_dir)){
+      save_plot <- NULL
+    }
+    plot_list <- plotDimRed(sample_object = sample_object,
+                            save_plot = save_plot,
+                            col_by = col_by_list, return_plot = TRUE,
+                            plot_type = "integrated.umap", ...)
   }
   
   return(list(object = sample_object,
               plots = plot_list))
 }
 
+
 plotDimRed <- function(sample_object, col_by, save_plot = NULL,
-                       plot_type = "umap",
+                       plot_type = "rna.umap",
                        dims_use = NULL, highlight_group = FALSE,
                        group = NULL, meta_data_col = "orig.ident",
                        return_plot = TRUE, ...) {
@@ -371,16 +449,12 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
                                  save_plot = NULL, show_legend = TRUE,
                                  size = 0.25) {
   plot_name_comb <- paste(group, collapse = "_")
-  if (is.null(color)) {
-    low <- "#00AFBB"
-    high <- "#FC4E07"
-  }
   plot1 <- plot_df[plot_df$all == "all_samples", ]
   plot2 <- plot_df[plot_df$all != "all_samples", ]
   
   base_plot <- ggplot2::ggplot(data = plot2, ggplot2::aes_(~dim1, ~dim2)) +
-    xlab(axis_names[1]) +
-    ylab(axis_names[2])
+    ggplot2::xlab(axis_names[1]) +
+    ggplot2::ylab(axis_names[2])
   
   base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
                                                ggplot2::aes_(~dim1, ~dim2), 
@@ -398,12 +472,21 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
     ggplot2::xlab(axis_names[1]) +
     ggplot2::ylab(axis_names[2])
   
-  if(is.null(limits)){
-    base_plot <- base_plot + ggplot2::scale_color_gradient(low = low, high = high, 
-                                                           name = col_by)
+  if (is.null(color)) {
+    base_plot <- base_plot + ggplot2::scale_color_viridis_c(option = "magma") +
+      labs(color = col_by)
   } else {
-    base_plot <- base_plot + ggplot2::scale_color_gradient(low = low, high = high, 
-                                                           name = col_by, limits = limits)
+    low <- color[1]
+    high <- color[2]
+    if(is.null(limits)){
+      base_plot <- base_plot + 
+        ggplot2::scale_color_gradient(low = low, high = high, name = col_by)
+    } else {
+      base_plot <- base_plot + ggplot2::scale_color_gradient(low = low,
+                                                             high = high, 
+                                                             name = col_by,
+                                                             limits = limits)
+    }
   }
   
   if (!(is.null(save_plot))){
