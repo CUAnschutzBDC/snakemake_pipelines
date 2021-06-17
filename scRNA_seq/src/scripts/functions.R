@@ -1536,3 +1536,63 @@ pairwise_markers <- function(seurat_object, meta_col,
   
 }
 
+find_write_markers <- function(seurat_object, save_dir,
+                               meta_col = "RNA_cluster",
+                               assay = "RNA", pval = 0.05,
+                               logfc = 0.5, gene_lists = NULL){
+  # Create a directory for results
+  ifelse(!dir.exists(file.path(save_dir, "files", "DE")),
+         dir.create(file.path(save_dir, "files", "DE")), FALSE)
+  
+  Idents(seurat_object) <- meta_col
+  marker_genes <- FindAllMarkers(seurat_object, assay = seurat_assay,
+                                     only.pos = TRUE)
+  write.csv(marker_genes, file = paste0(save_dir,
+                                            "files/DE/", assay, "_markers_",
+                                            meta_col, ".csv"))
+  
+  # Create excel wb
+  gene_wb <- createWorkbook()
+  
+  # Write to excel wb
+  full_list <- lapply(unique(marker_genes$cluster), function(x){
+    x <- as.character(x)
+    new_df <- marker_genes %>%
+      dplyr::filter(cluster == x & p_val_adj < pval & avg_log2FC > logfc)
+    addWorksheet(gene_wb, x)
+    writeData(gene_wb, x, new_df)
+  })
+  
+  # Run a hypergeomitric test
+  if(!is.null(gene_lists)){
+    hypergeometric <- hypergeometric_test(seurat_object = seurat_data,
+                                          gene_list = gene_lists,
+                                          DE_table = marker_genes,
+                                          DE_p_cutoff = 0.05,
+                                          DE_lfc_cutoff = 0.5,
+                                          correction_method = "fdr")
+    write.csv(hypergeometric, file = paste0(save_dir,
+                                            "files/DE/", assay,
+                                            "_hypergeometric_",
+                                            meta_col, ".csv"))
+    
+    # Write to excel wb
+    full_list <- lapply(unique(hypergeometric$cluster), function(x){
+      x <- as.character(x)
+      new_df <- hypergeometric %>%
+        dplyr::filter(cluster == x)
+      worksheet_name <-  paste0(x, "_gse")
+      addWorksheet(gene_wb, worksheet_name)
+      writeData(gene_wb, worksheet_name, new_df)
+    })
+  }
+  
+  ## Save workbook to working directory
+  saveWorkbook(gene_wb,
+               file = paste0(save_dir,
+                             "files/DE/", assay, "_markers_",
+                             meta_col, ".xlsx"),
+               overwrite = TRUE)
+  
+  return(marker_genes)
+}
