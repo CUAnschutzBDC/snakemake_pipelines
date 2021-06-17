@@ -266,7 +266,8 @@ plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
   }else if (col_by %in% rownames(seurat_object[["ADT"]])){
     col_by_data <- FetchData(object = seurat_object, vars = paste0("adt_", col_by))
   }else {
-    stop("col_by must be a gene, metric from meta data or 'cluster'")
+    stop(paste0("col_by (", col_by,
+                ") must be a gene, metric from meta data or 'cluster'"))
   }
   
   # Make the name in the data frame the same regardless of what it was originally
