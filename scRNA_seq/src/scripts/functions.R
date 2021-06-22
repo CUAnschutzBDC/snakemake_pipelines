@@ -342,18 +342,27 @@ plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
 
 discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
                           color = NULL, save_plot = NULL, show_legend = TRUE,
-                          size = 0.25){
+                          size = 0.25, ggrastr = FALSE,
+                          raster_scale = 1, raster_res = 300){
   base_plot <- ggplot2::ggplot(data = plot_df,
                                ggplot2::aes_(~dim1, ~dim2)) +
-    xlab(axis_names[1]) +
-    ylab(axis_names[2])
+    ggplot2::xlab(axis_names[1]) +
+    ggplot2::ylab(axis_names[2])
   
   # Add colors based on metric chosen
-  base_plot <- base_plot +
-    ggplot2::geom_point(ggplot2::aes_(colour = ~colour_metric),
-                        show.legend = show_legend, size = size) +
-    ggplot2::guides(colour = ggplot2::guide_legend(override.aes = list(size=3)))
-  
+  if (ggrastr){
+    base_plot <- base_plot +
+      ggrastr::geom_point_rast(ggplot2::aes_(colour = ~colour_metric),
+                               show.legend = show_legend, size = size,
+                               scale = raster_scale, raster.dpi = raster_res) +
+      ggplot2::guides(colour = ggplot2::guide_legend(override.aes = list(size=3)))
+  } else {
+    base_plot <- base_plot +
+      ggplot2::geom_point(ggplot2::aes_(colour = ~colour_metric),
+                          show.legend = show_legend, size = size) +
+      ggplot2::guides(colour = ggplot2::guide_legend(override.aes = list(size=3)))
+  }
+
   nColors <- length(levels(factor(plot_df$colour_metric)))
   
   # Color based on RColorBrewer if own palette isn't chosen
@@ -375,14 +384,24 @@ discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
 
 continuousPlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
                             color = NULL, save_plot = NULL, show_legend = TRUE,
-                            size = 0.25){
+                            size = 0.25, ggrastr = FALSE,
+                            raster_scale = 1, raster_res = 300){
   base_plot <- ggplot2::ggplot(data = plot_df, ggplot2::aes_(~dim1, ~dim2)) +
-    xlab(axis_names[1]) +
-    ylab(axis_names[2])
+    ggplot2::xlab(axis_names[1]) +
+    ggplot2::ylab(axis_names[2])
   
-  base_plot <- base_plot +
-    ggplot2::geom_point(ggplot2::aes_(colour = ~colour_metric),
-                        show.legend = show_legend, size = size)
+  if (ggrastr){
+    base_plot <- base_plot +
+      ggrastr::geom_point_rast(ggplot2::aes_(colour = ~colour_metric),
+                               show.legend = show_legend, size = size,
+                               scale = raster_scale, raster.dpi = raster_res) 
+  } else {
+    base_plot <- base_plot +
+      ggplot2::geom_point(ggplot2::aes_(colour = ~colour_metric),
+                          show.legend = show_legend, size = size)
+    
+  }
+  
   
   if (is.null(color)) {
     base_plot <- base_plot + ggplot2::scale_color_viridis_c(option = "magma") +
@@ -393,7 +412,7 @@ continuousPlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
     base_plot <- base_plot + 
       ggplot2::scale_color_gradient(low = low, high = high, name = col_by)
   }
-    
+  
   
   if (!(is.null(save_plot))){
     ggplot2::ggsave(save_plot, plot = base_plot)
@@ -1079,7 +1098,7 @@ convertHumanGeneList <- function(x, convert = "human_mouse"){
 de_to_pathview <- function(path_id_list, seurat_object = NULL,
                            seurat_de = NULL,
                            out_dir = "pathview",
-                           pval = 0.05, ...){
+                           pval = 0.05, gen_id = "mmu", ...){
   if(is.null(seurat_de) && is.null(seurat_object)){
     stop("must provide either a seurat object or a pre made de list")
   } else if(is.null(seurat_de)){
@@ -1101,7 +1120,8 @@ de_to_pathview <- function(path_id_list, seurat_object = NULL,
     run_pathview(gene_matrix = marker_genes_rna_long,
                  path_id = path_id_list[x],
                  path_name = x,
-                 out_dir = out_dir)
+                 out_dir = out_dir,
+                 gen_id = gen_id)
   ))
 }
 
