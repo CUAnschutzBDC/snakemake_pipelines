@@ -694,7 +694,8 @@ plot_heatmap <- function(seurat_object, gene_list, meta_col,
                          colors = NULL, meta_df = NULL, color_list = NULL,
                          max_val = 2.5, min_val = -2.5, cluster_rows = FALSE,
                          cluster_cols = FALSE, average_expression = FALSE,
-                         plot_meta_col = TRUE){
+                         plot_meta_col = TRUE, show_rownames = TRUE,
+                         show_colnames = FALSE, ...){
   if(average_expression){
     # Find average expression of genes in clusters
     Idents(seurat_object) <- meta_col
@@ -782,16 +783,18 @@ plot_heatmap <- function(seurat_object, gene_list, meta_col,
   
   heatmap <- pheatmap(heatmap_scale, cluster_rows = cluster_rows,
                       cluster_cols = cluster_cols,
-                      show_rownames = TRUE,
-                      show_colnames = FALSE, annotation_col = sample_info,
+                      show_rownames = show_rownames,
+                      show_colnames = show_colnames,
+                      annotation_col = sample_info,
                       annotation_colors = coloring, color = blueYellow,
                       border_color = NA, clustering_method = "complete",
-                      silent = TRUE)
+                      silent = TRUE, ...)
   return(heatmap)
 }
 
 stacked_barplots <- function(seurat_object, meta_col, color = NULL,
-                             percent = TRUE, split_by = NULL){
+                             percent = TRUE, split_by = NULL,
+                             return_values = FALSE){
   if(!is.null(split_by)){
     meta_data <- Seurat::FetchData(seurat_object, vars = c(meta_col, split_by)) %>%
       dplyr::rename(meta_col = 1, split_by = 2) %>%
@@ -829,10 +832,13 @@ stacked_barplots <- function(seurat_object, meta_col, color = NULL,
     ggplot2::xlab(split_by) +
     ggplot2::labs(fill = meta_col)
   
-  return(bar_plot)
+  if(return_values){
+    return(list(data = meta_data,
+                barplot = bar_plot))
+  } else {
+    return(bar_plot)
+  }
 }
-
-
 
 hypergeometric_test <- function(seurat_object, gene_list, DE_table,
                                 DE_p_cutoff = 0.05, DE_lfc_cutoff = 0.5,
