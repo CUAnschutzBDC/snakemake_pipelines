@@ -1622,3 +1622,165 @@ find_write_markers <- function(seurat_object, save_dir,
   
   return(marker_genes)
 }
+
+
+name_clusters <- function(seurat_object, ref_mat,
+                          save_name, ADT = FALSE,
+                          nfeatures = 1000, clusters = "RNA_cluster"){
+  
+  # Keep only genes in seurat object
+  ref_mat <- ref_mat[rownames(ref_mat) %in% rownames(seurat_object),]
+  
+  return_list <- list()
+  
+  ##########
+  # Set up #
+  ##########
+  # get count matrix
+  DefaultAssay(seurat_object) <- seurat_assay
+  seurat_mat <- GetAssayData(object = seurat_object, slot = "data")
+  seurat_mat <- as.data.frame(seurat_mat)
+  
+  # Find only 1000 variable features
+  
+  seurat_var <- FindVariableFeatures(
+    seurat_object,
+    assay = "RNA",
+    selection.method = "vst",
+    nfeatures = nfeatures
+  )
+  seurat_genes <- VariableFeatures(seurat_var)
+  
+  # RNA
+  
+  seurat_metadata <- seurat_object[[clusters]]
+  
+  seurat_metadata[[clusters]] <- as.character(seurat_metadata[[clusters]])
+  
+  seurat_object[[clusters]] <- seurat_metadata[[clusters]]
+  
+  # Run clustify
+  seurat_res <- clustify(
+    input = seurat_mat,
+    metadata = seurat_metadata,
+    ref_mat = ref_mat,
+    query_genes = seurat_genes,
+    cluster_col = clusters
+  )
+  
+  return_list$RNA <- seurat_res
+  
+  pheatmap::pheatmap(seurat_res, color = viridis(10))
+  
+  seurat_cluster <- cor_to_call(seurat_res)
+  new_clusters <- seurat_cluster$type
+  names(new_clusters) <- seurat_cluster$cluster
+  
+  colname <- paste0("RNA_", save_name)
+  
+  seurat_object[[colname]] <- new_clusters[seurat_object$RNA_cluster]
+  
+  plot1 <- plotDimRed(seurat_object, col_by = colname,
+                      plot_type = "rna.umap")
+  if(ADT){
+    plot2 <- plotDimRed(seurat_object, col_by = colname,
+                        plot_type = "adt.umap")
+    plot3 <- plotDimRed(seurat_object, col_by = colname,
+                        plot_type = "wnn.umap")
+  }
+  
+  pdf(paste0(save_dir, "images/RNA_mapping_", save_name, ".pdf"))
+  print(plot1)
+  if(ADT){
+    print(plot2)
+    print(plot3)
+  }
+  dev.off()
+  
+  if(ADT){
+    # ADT
+    clusters <- "ADT_cluster"
+    seurat_metadata <- seurat_object[[clusters]]
+    
+    seurat_metadata[[clusters]] <- as.character(seurat_metadata[[clusters]])
+    
+    seurat_object[[clusters]] <- seurat_metadata[[clusters]]
+    
+    # Run clustify
+    seurat_res <- clustify(
+      input = seurat_mat,
+      metadata = seurat_metadata,
+      ref_mat = ref_mat,
+      query_genes = seurat_genes,
+      cluster_col = clusters
+    )
+    
+    return_list$ADT <- seurat_res
+    
+    seurat_cluster <- cor_to_call(seurat_res)
+    new_clusters <- seurat_cluster$type
+    names(new_clusters) <- seurat_cluster$cluster
+    
+    colname <- paste0("ADT_", save_name)
+    
+    seurat_object[[colname]] <- new_clusters[seurat_object$ADT_cluster]
+    
+    plot1 <- plotDimRed(seurat_object, col_by = colname,
+                        plot_type = "rna.umap")
+    plot2 <- plotDimRed(seurat_object, col_by = colname,
+                        plot_type = "adt.umap")
+    plot3 <- plotDimRed(seurat_object, col_by = colname,
+                        plot_type = "wnn.umap")
+    
+    pdf(paste0(save_dir, "images/ADT_mapping_", save_name, ".pdf"))
+    print(plot1)
+    print(plot2)
+    print(plot3)
+    dev.off()
+    
+    # Combined
+    clusters <- "combined_cluster"
+    seurat_metadata <- seurat_object[[clusters]]
+    
+    seurat_metadata[[clusters]] <- as.character(seurat_metadata[[clusters]])
+    
+    seurat_object[[clusters]] <- seurat_metadata[[clusters]]
+    
+    # Run clustify
+    seurat_res <- clustify(
+      input = seurat_mat,
+      metadata = seurat_metadata,
+      ref_mat = ref_mat,
+      query_genes = seurat_genes,
+      cluster_col = clusters
+    )
+    
+    return_list$WNN <- seurat_res
+    
+    seurat_cluster <- cor_to_call(seurat_res)
+    new_clusters <- seurat_cluster$type
+    names(new_clusters) <- seurat_cluster$cluster
+    
+    colname <- paste0("combined_", save_name)
+    
+    seurat_object[[colname]] <- new_clusters[seurat_object$combined_cluster]
+    
+    plot1 <- plotDimRed(seurat_object, col_by = colname,
+                        plot_type = "rna.umap")
+    plot2 <- plotDimRed(seurat_object, col_by = colname,
+                        plot_type = "adt.umap")
+    plot3 <- plotDimRed(seurat_object, col_by = colname,
+                        plot_type = "wnn.umap")
+    
+    pdf(paste0(save_dir, "images/combined_mapping_", save_name,
+               ".pdf"))
+    print(plot1)
+    print(plot2)
+    print(plot3)
+    dev.off()
+    
+  }
+  return_list$object <- seurat_object
+  
+  return(return_list)
+}
