@@ -1,53 +1,89 @@
 library(DoubletFinder)
 library(Seurat)
-save_dir <- "/Users/wellskr/Documents/Analysis/Holger_Russ/mtec_organoid_multi/results/R_analysis/"
-stoc_path <- paste0(save_dir, "stoc_start.rds")
-stoc_data <- readRDS(stoc_path)
 
-pK <- 0.04
-SCT <- TRUE
-seurat_assay <- "RNA"
+source("src/scripts/functions.R")
 
-source("functions.R")
+# Set theme
+ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
+
+sample <- "sample"
+
+normalization_method <- "log" # can be SCT or log
+
+HTO <- TRUE
+ADT <- TRUE
+
+if(normalization_method == "SCT"){
+  SCT <- TRUE
+  seurat_assay <- "SCT"
+} else {
+  SCT <- FALSE
+  seurat_assay <- "RNA"
+}
+
+# Set directories
+base_dir <-
+  "/Users/wellskr/Documents/Analysis/Howard_Davidson/Davidson_honeymoon_scRNAseq/"
+
+base_dir_proj <- paste0(base_dir, "results/", sample, "/")
+save_dir <- paste0(base_dir_proj, "R_analysis/")
+
+# Read in data
+seurat_data <- readRDS(paste0(save_dir, "rda_obj/seurat_start.rds"))
 
 # Remove "negatives"
-Idents(stoc_data) <- "HTO_classification.global"
-stoc_data <- subset(x = stoc_data, idents = c("Singlet", "Doublet"))
-DefaultAssay(stoc_data) <- seurat_assay
-stoc_data <- PCA_dimRed(stoc_data, assay = seurat_assay)
-umap_data <- group_cells(stoc_data, assay = seurat_assay)
+if(HTO){
+  Idents(seurat_data) <- "HTO_classification.global"
+  seurat_data <- subset(x = seurat_data, idents = c("Singlet", "Doublet"))
+}
 
-stoc_data <- umap_data[[1]]
+# PCA and UMAP
+set.seed(0)
+DefaultAssay(seurat_data) <- seurat_assay
+seurat_data <- PCA_dimRed(seurat_data, assay = seurat_assay)
+umap_data <- group_cells(seurat_data, assay = seurat_assay)
 
+seurat_data <- umap_data[[1]]
 
-## pK Identification (ground-truth) ------------------------------------------------------------------------------------------
-sweep.res.stoc_data <- paramSweep_v3(stoc_data, PCs = 1:10, sct = SCT)
-gt.calls <- stoc_data@meta.data[rownames(sweep.res.stoc_data[[1]]),
+# Run Doublet finder -----------------------------------------------------------
+set.seed(0)
+sweep.res.seurat_data <- paramSweep_v3(seurat_data, PCs = 1:10, sct = SCT)
+
+if(HTO){
+  ## pK Identification (ground-truth)
+  gt.calls <- seurat_data@meta.data[rownames(sweep.res.seurat_data[[1]]),
                                     "HTO_classification.global"]
-gt.calls <- as.factor(gt.calls)
-sweep.stats_organoid <- summarizeSweep(sweep.res.stoc_data, GT = TRUE,
+  gt.calls <- as.factor(gt.calls)
+  sweep.stats_sample <- summarizeSweep(sweep.res.seurat_data, GT = TRUE,
                                        GT.calls = gt.calls)
-bcmvn_organoid <- find.pK(sweep.stats_organoid)
+  bcmvn_sample <- find.pK(sweep.stats_sample)
+  max_AUC <- max(bcmvn_sample$MeanAUC)
+  max_BC <- max(bcmvn_sample$MeanBC)
+  max_BCmetric <- max(bcmvn_sample$BCmetric)
+} else {
+  ## pK Identification (no ground-truth)
+  sweep.stats_sample <- summarizeSweep(sweep.res.seurat_data, GT = FALSE)
+  bcmvn_sample <- find.pK(sweep.stats_sample)
+  max_BC <- max(bcmvn_sample$MeanBC)
+  max_BCmetric <- max(bcmvn_sample$BCmetric)
+}
 
-max_AUC <- max(bcmvn_organoid$MeanAUC)
-max_BC <- max(bcmvn_organoid$MeanBC)
-max_BCmetric <- max(bcmvn_organoid$BCmetric)
-# Could use pK = 0.08 or pk = 0.19
-# 0.08 is closer to the max of the AUC
+# Best is PK 0.15
 pK <- 0.005
-## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
-annotations <- stoc_data$seurat_clusters
-homotypic.prop <- modelHomotypic(annotations)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
-nExp_poi <- round(0.039*nrow(stoc_data@meta.data))  
+## Homotypic Doublet Proportion Estimate ---------------------------------------
+annotations <- seurat_data$seurat_clusters
+homotypic.prop <- modelHomotypic(annotations) 
+## CHANGE BASED ON CELL NUMBERS
+nExp_poi <- round(0.076*nrow(seurat_data@meta.data))  
 nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
 
 
-## Find pK from bcmvn output, pN selection is less important----------------------------------------------------------------
+## Find pK from bcmvn output, pN selection is less important--------------------
 
-stoc_data <- doubletFinder_v3(stoc_data, PCs = 1:10, pN = 0.25,
+seurat_data <- doubletFinder_v3(seurat_data, PCs = 1:10, pN = 0.25,
                                   pK = pK, nExp = nExp_poi.adj,
                                   reuse.pANN = FALSE, sct = SCT)
 
+seurat_data$Doublet_finder <- seurat_data$DF.classifications_0.25_0.005_700
 
-
-saveRDS(stoc_data, paste0(save_dir, "stoc_doublet.rds"))
+saveRDS(seurat_data, paste0(save_dir, "rda_obj/seurat_doublet.rds"))

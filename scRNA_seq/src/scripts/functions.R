@@ -1,25 +1,35 @@
 create_seurat_object <- function(sample, count_path, ADT = TRUE, hashtag = TRUE,
-                                 min_features = 200, min_cells = 3){
+                                 min_features = 200, min_cells = 3,
+                                 hashtag_idents = NULL){
   sample_path <- paste0(count_path, "/", sample, "/outs/count/filtered_feature_bc_matrix")
   sample_data <- Read10X(data.dir = sample_path)
-  if (ADT){
+  if (ADT | hashtag){
     sample_object <- CreateSeuratObject(counts = sample_data[["Gene Expression"]],
-                                        project = sample, min.cells = min_cells, min.features = min_features)
+                                        project = sample, min.cells = min_cells, 
+                                        min.features = min_features)
     if (hashtag){
       protein_data <- sample_data[["Antibody Capture"]]
-      hashtag_data <- protein_data[grepl("Hashtag", rownames(protein_data)), ]
-      ADT_data <- protein_data[!grepl("Hashtag", rownames(protein_data)), ]
+      if (is.null(hashtag_idents)){
+        hashtag_data <- protein_data[grepl("Hashtag", rownames(protein_data)), ]
+        ADT_data <- protein_data[!grepl("Hashtag", rownames(protein_data)), ]
+      } else {
+        hashtag_data <- protein_data[rownames(protein_data) %in% hashtag_idents, ]
+        ADT_data <- protein_data[!(rownames(protein_data) %in% hashtag_idents), ]
+      }
       sample_object[["HTO"]] <- CreateAssayObject(
-        counts = hashtag_data[ ,Cells(sample_object)])
+        counts = hashtag_data[ ,Cells(sample_object)], min.cells = 3)
       sample_object <- NormalizeData(sample_object, assay = "HTO",
                                      normalization.method = "CLR")
     } else {
-      ADT_data <- sample_data[["Antibody_Capture"]]
+      ADT_data <- sample_data[["Antibody Capture"]]
     }
-    sample_object[["ADT"]] <- CreateAssayObject(
-      counts = ADT_data[ , Cells(sample_object)])
-    sample_object <- NormalizeData(sample_object, assay = "ADT",
-                                   normalization.method = "CLR")
+    if (ADT){
+      sample_object[["ADT"]] <- CreateAssayObject(
+        counts = ADT_data[ , Cells(sample_object)], min.cells = 3)
+      sample_object <- NormalizeData(sample_object, assay = "ADT",
+                                     normalization.method = "CLR",
+                                     margin = 2)
+    }
   } else {
     sample_object <- CreateSeuratObject(counts = sample_data,
                                         project = sample, min.cells = min_cells,
@@ -29,7 +39,7 @@ create_seurat_object <- function(sample, count_path, ADT = TRUE, hashtag = TRUE,
 }
 
 PCA_dimRed <- function(sample_object, assay = "RNA",
-                       reduction_name = NULL){
+                       reduction_name = NULL, vars_to_regress = NULL){
   if(assay == "RNA"){
     if(is.null(reduction_name)){
       reduction_name = "pca"
@@ -45,7 +55,8 @@ PCA_dimRed <- function(sample_object, assay = "RNA",
     DefaultAssay(sample_object) <- "ADT"
     # Use all ADTS for dimensional reduction
     VariableFeatures(sample_object) <- rownames(sample_object[["ADT"]])
-    sample_object <- Seurat::ScaleData(sample_object) %>% 
+    sample_object <- Seurat::ScaleData(sample_object,
+                                       vars.to.regress = vars_to_regress) %>% 
       Seurat::RunPCA(reduction.name = "apca")
   } else if(assay == "SCT"){
     if(is.null(reduction_name)){
@@ -256,14 +267,21 @@ plotDimRed <- function(sample_object, col_by, save_plot = NULL,
 
 plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
                              dims_use = NULL, highlight_group = FALSE,
-                             group = NULL, meta_data_col = "orig.ident", ...) {
+                             group = NULL, meta_data_col = "orig.ident",
+                             assay = NULL, ...) {
   # Determine where in Seurat object to find variable to color by
-  if (col_by == "cluster" | col_by == "Cluster"){
+  if (!is.null(assay) && col_by %in% rownames(seurat_object[[assay]])){
+    DefaultAssay(seurat_object) <- assay
+    col_by_data <- FetchData(object = seurat_object, vars = col_by)
+  } else if (!is.null(assay)){
+    stop(paste0("col_by (", col_by, ") is not present in your chosen assay"))
+  } else if (col_by == "cluster" | col_by == "Cluster"){
     col_by_data <- as.data.frame(Idents(object = seurat_object))
   }else if (col_by %in% rownames(seurat_object) |
             col_by %in% colnames(seurat_object[[]])){
     col_by_data <- FetchData(object = seurat_object, vars = col_by)
-  }else if (col_by %in% rownames(seurat_object[["ADT"]])){
+  }else if ("ADT" %in% Seurat::Assays(seurat_object) &&
+            col_by %in% rownames(seurat_object[["ADT"]])){
     col_by_data <- FetchData(object = seurat_object, vars = paste0("adt_", col_by))
   }else {
     stop(paste0("col_by (", col_by,
@@ -294,6 +312,7 @@ plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
     axis_names <- colnames(plot_coord)
     colnames(plot_coord) <- c("dim1", "dim2")
     plot_df <- merge(plot_coord, col_by_data, by = "row.names")
+    rownames(plot_df) <- plot_df$Row.names
   } else {
     stop("plot type must be a dimensional reduction in Seurat object")
   }
@@ -308,36 +327,37 @@ plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
       plot_df <- plot_df[match(rownames(seurat_object[[]]),
                                rownames(plot_df)), , drop = FALSE]
     }
-    plot_df[[meta_data_col]] <- seurat_object[[meta_data_col]]
+    plot_df[[meta_data_col]] <- seurat_object[[meta_data_col]][[1]]
+    plot_df$all <- plot_df[[meta_data_col]]
     if (is.factor(plot_df$all)){
       plot_df$all <- factor(plot_df$all,
                             levels = c("all_samples", levels(plot_df$all)))
     }
-    plot_df$all[!(plot_df[[meta_data_col]] %in% group)] <- "all_samples"
+    plot_df$all[!(plot_df$all %in% group)] <- "all_samples"
     
-    # Plot as descrete
+    # Plot as discrete
     if (!is.numeric(plot_df$colour_metric)){
       return_plot <- groupDiscretePlots(group, plot_df, axis_names = axis_names,
                                         col_by = col_by, ...)
-      # Plot as continuouts
+      # Plot as continuous
     }else{
       return_plot <- groupContinuousPlots(group, plot_df, axis_names = axis_names,
                                           col_by = col_by, ...)
     }
-  }
-  # Plot as discrete
-  if (!is.numeric(plot_df$colour_metric)){
-    return_plot <- discretePlots(plot_df, axis_names = axis_names,
-                                 col_by = col_by, ...)
-    
-    # Plot as continuous
-  }else{
-    return_plot <- continuousPlots(plot_df, axis_names = axis_names,
+  } else {
+    # Plot as discrete
+    if (!is.numeric(plot_df$colour_metric)){
+      return_plot <- discretePlots(plot_df, axis_names = axis_names,
                                    col_by = col_by, ...)
+      
+      # Plot as continuous
+    }else{
+      return_plot <- continuousPlots(plot_df, axis_names = axis_names,
+                                     col_by = col_by, ...)
+    }
   }
   return(return_plot)
 }
-
 
 
 discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
