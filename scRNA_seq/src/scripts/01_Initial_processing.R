@@ -23,9 +23,8 @@ if(normalization_method == "SCT"){
 base_dir <- "/Users/wellskr/Documents/Analysis/Holger_Russ/mtec_organoid_multi/"
 
 save_dir <- paste0(base_dir, "results/R_analysis/")
-data_path <- paste0(base_dir,
-  "results/Hashtag_STOC/outs/count/filtered_feature_bc_matrix/")
-sample <- "Hashtag_STOC"
+
+sample <- "sample"
 
 # Create seurat object
 stoc_data <- create_seurat_object(sample = sample,

@@ -448,7 +448,7 @@ hypergeometric_test <- function(dds, gene_list, DE_table,
       DE_one <- DE_table %>%
         dplyr::filter(comparison == comparison_name &
                         padj < DE_p_cutoff &
-                        lfcSE > DE_lfc_cutoff)
+                        abs(log2FoldChange) > DE_lfc_cutoff)
       
       # Find number of overlaps
       x <- length(intersect(gene_list_one, DE_one$gene_name))
