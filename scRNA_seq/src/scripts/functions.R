@@ -246,13 +246,13 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
               plots = plot_list))
 }
 
-
 plotDimRed <- function(sample_object, col_by, save_plot = NULL,
                        plot_type = "rna.umap",
                        dims_use = NULL, highlight_group = FALSE,
                        group = NULL, meta_data_col = "orig.ident",
                        return_plot = TRUE, ...) {
   plot_list <- lapply(col_by, function(x) {
+    print(x)
     plotDimRedSingle(seurat_object = sample_object, col_by = x, plot_type = plot_type,
                      dims_use = dims_use, highlight_group = highlight_group,
                      group = group, meta_data_col = meta_data_col, ...)
@@ -360,6 +360,7 @@ plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
 }
 
 
+
 discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
                           color = NULL, save_plot = NULL, show_legend = TRUE,
                           size = 0.25, ggrastr = FALSE,
@@ -382,7 +383,7 @@ discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
                           show.legend = show_legend, size = size) +
       ggplot2::guides(colour = ggplot2::guide_legend(override.aes = list(size=3)))
   }
-
+  
   nColors <- length(levels(factor(plot_df$colour_metric)))
   
   # Color based on RColorBrewer if own palette isn't chosen
@@ -440,28 +441,45 @@ continuousPlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
   return(base_plot)
 }
 
-
 groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "dim2"),
                                color = NULL, save_plot = NULL, show_legend = TRUE,
-                               size = 0.25) {
+                               size = 0.25, ggrastr = FALSE,
+                               raster_scale = 1, raster_res = 300) {
   plot1 <- plot_df[plot_df$all == "all_samples", ]
   plot2 <- plot_df[plot_df$all != "all_samples", ]
   
   base_plot <- ggplot2::ggplot(data = plot2, ggplot2::aes_(~dim1,
                                                            ~dim2)) +
-    xlab(axis_names[1]) +
-    ylab(axis_names[2])
+    ggplot2::xlab(axis_names[1]) +
+    ggplot2::ylab(axis_names[2])
   
-  base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
-                                               ggplot2::aes_(~dim1, ~dim2), 
-                                               color = "#DCDCDC",
-                                               size = size,
-                                               show.legend = FALSE)
-  base_plot <- base_plot + ggplot2::geom_point(data = plot2,
-                                               ggplot2::aes_(~dim1, ~dim2,
-                                                             color = ~all),
-                                               size = size,
-                                               show.legend = show_legend)
+  if(ggrastr){
+    base_plot <- base_plot + ggrastr::geom_point_rast(data = plot1, 
+                                                 ggplot2::aes_(~dim1, ~dim2), 
+                                                 color = "#DCDCDC",
+                                                 size = size,
+                                                 show.legend = FALSE,
+                                                 scale = raster_scale,
+                                                 raster.dpi = raster_res)
+    base_plot <- base_plot + ggrastr::geom_point_rast(data = plot2,
+                                                 ggplot2::aes_(~dim1, ~dim2,
+                                                               color = ~colour_metric),
+                                                 size = size,
+                                                 show.legend = show_legend,
+                                                 scale = raster_scale,
+                                                 raster.dpi = raster_res)  
+  } else {
+    base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
+                                                 ggplot2::aes_(~dim1, ~dim2), 
+                                                 color = "#DCDCDC",
+                                                 size = size,
+                                                 show.legend = FALSE)
+    base_plot <- base_plot + ggplot2::geom_point(data = plot2,
+                                                 ggplot2::aes_(~dim1, ~dim2,
+                                                               color = ~colour_metric),
+                                                 size = size,
+                                                 show.legend = show_legend)
+  }
   
   base_plot <- base_plot + #ggplot2::theme_classic() + 
     ggplot2::ggtitle(paste(group, collapse = "_")) +
@@ -469,7 +487,12 @@ groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "d
     ggplot2::ylab(axis_names[2]) +
     ggplot2::guides(colour = ggplot2::guide_legend(override.aes = list(size=3)))
   if (is.null(color)) {
-    nColors <- length(levels(factor(plot2$all)))
+    if(!is.null(levels(plot2$color_metric))){
+      nColors <- length(levels(plot2$colour_metric))
+    } else {
+      nColors <- length(unique(plot2$colour_metric))
+      
+    }
     base_plot <- base_plot + ggplot2::scale_color_manual(
       values = grDevices::colorRampPalette(
         RColorBrewer::brewer.pal(9, "Set1"))(nColors), name = col_by)
@@ -487,7 +510,8 @@ groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "d
 groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
                                  limits = NULL, axis_names = c("dim1", "dim2"),
                                  save_plot = NULL, show_legend = TRUE,
-                                 size = 0.25) {
+                                 size = 0.25, ggrastr = FALSE,
+                                 raster_scale = 1, raster_res = 300) {
   plot_name_comb <- paste(group, collapse = "_")
   plot1 <- plot_df[plot_df$all == "all_samples", ]
   plot2 <- plot_df[plot_df$all != "all_samples", ]
@@ -496,17 +520,34 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
     ggplot2::xlab(axis_names[1]) +
     ggplot2::ylab(axis_names[2])
   
-  base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
-                                               ggplot2::aes_(~dim1, ~dim2), 
-                                               color = "#DCDCDC",
-                                               size = size,
-                                               show.legend = FALSE)
-  base_plot <- base_plot + ggplot2::geom_point(data = plot2,
-                                               ggplot2::aes_(~dim1, ~dim2,
-                                                             color = ~colour_metric),
-                                               size = size,
-                                               show.legend = show_legend)
-  
+  if(ggrastr){
+    base_plot <- base_plot + ggrastr::geom_point_rast(data = plot1, 
+                                                 ggplot2::aes_(~dim1, ~dim2), 
+                                                 color = "#DCDCDC",
+                                                 size = size,
+                                                 show.legend = FALSE,
+                                                 scale = raster_scale,
+                                                 raster.dpi = raster_res)
+    base_plot <- base_plot + ggrastr::geom_point_rast(data = plot2,
+                                                 ggplot2::aes_(~dim1, ~dim2,
+                                                               color = ~colour_metric),
+                                                 size = size,
+                                                 show.legend = show_legend,
+                                                 scale = raster_scale,
+                                                 raster.dpi = raster_res)    
+  } else {
+    base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
+                                                 ggplot2::aes_(~dim1, ~dim2), 
+                                                 color = "#DCDCDC",
+                                                 size = size,
+                                                 show.legend = FALSE)
+    base_plot <- base_plot + ggplot2::geom_point(data = plot2,
+                                                 ggplot2::aes_(~dim1, ~dim2,
+                                                               color = ~colour_metric),
+                                                 size = size,
+                                                 show.legend = show_legend)
+  }
+
   base_plot <- base_plot + #ggplot2::theme_classic() +
     ggplot2::ggtitle(paste0(plot_name_comb, " ", col_by)) +
     ggplot2::xlab(axis_names[1]) +
@@ -534,7 +575,6 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
   }
   return(base_plot)
 }
-
 
 featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
                          plot_type = "violin",
