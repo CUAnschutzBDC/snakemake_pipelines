@@ -1,0 +1,168 @@
+# Rules for running spaceranger
+
+rule merge_fastqs:
+    output:
+        "{results}/logs/merge_fastqs/{sample}_merge_fastqs_done.out"
+    params:
+        job_name = "merge_fastqs",
+        memory   = "select[mem>4] rusage[mem=4]",
+        raw_data = RAW_DATA,
+        fq_dir   = FASTQ_DIR,
+        fq_info  = FASTQ_INFO
+    log:
+        "{results}/logs/merge_fastqs/{sample}_merge_fastqs"
+    threads:
+        1
+    run:
+        # Function to retrieve fastq paths
+        def _get_fq_paths(sample, read, raw_dir):
+            path_list = []
+            for directory in raw_dir:
+                _check_path(directory)
+                fq_paths = os.path.join(directory, sample + "*" + read + "*.fastq.gz")
+                fq_paths = glob.glob(os.path.abspath(fq_paths))
+                if fq_paths:
+                    print(fq_paths)
+                    if re.search(sample + "\.*_[0-9]" + FASTQ_INFO, fq_paths[0]):
+                        path_dict = {}
+                        fastq_count = 0
+                        for x in fq_paths:
+                            fastq_num = re.search("_[0-9]" + FASTQ_INFO, x).group(0)[1]
+                            path_dict[int(fastq_num) - 1] = fastq_count
+                            fastq_count += 1
+                        [path_list.append(fq_paths[path_dict[i]]) for i in range(len(path_dict))]
+                    else:
+                        [path_list.append(x) for x in fq_paths]
+
+            if not path_list:
+                sys.exit("ERROR: No fastqs found for " + sample + ".") 
+                          
+            return path_list
+
+        # Function to build merge command
+        def _build_merge_cmd(path_list, merged_path):
+            cmds = ""
+
+            for fq_path in path_list:
+                cmds += " " + fq_path
+
+            cmds = "cat" + cmds + " > " + merged_path
+
+            return cmds
+
+        # Function to merge fastq files or create symlink
+        def _merge_fastqs(sample, merged_name, raw_dir):
+
+            # Merge fastqs for each read or create a symlink
+            for read in ["_R1_", "_R2_"]:
+                names = sample.split(",")
+
+                # Create list of commands for creating symlinks
+                if len(names) == 1:
+                    path_list = _get_fq_paths(names[0], read, raw_dir)
+
+                    cmd_list = []
+                    for x in path_list:
+                        if re.search("_[0-9]" + params.fq_info, x):
+                            fastq_tail = re.search("_[0-9]" + params.fq_info, x).group(0)
+                        else:
+                            fastq_tail = re.search(params.fq_info, x).group(0)
+                        merged_path = os.path.join(params.fq_dir, merged_name + fastq_tail)
+                        cmd_list += ["ln -s " + x + " " + merged_path]
+
+                # Create list of commands for merging fastqs
+                else:
+                    path_dict = {}
+
+                    for name in names:
+                        path_list = []
+                        [path_list.append(x) for x in _get_fq_paths(name, read, raw_dir)]
+                        path_dict[name] = path_list
+                    path_dict
+                    path_list = list(zip(path_dict[names[0]], path_dict[names[1]]))
+                    cmd_list = []
+                    for i in path_list:
+                        if re.search("_[0-9]" + params.fq_info, i[0]):
+                            fastq_tail = re.search("_[0-9]" + params.fq_info, i[0]).group(0)
+                        else:
+                            fastq_tail = re.search(params.fq_info, i[0]).group(0)                        
+                        merged_path = os.path.join(params.fq_dir, merged_name + fastq_tail)
+
+                        cmd_list.append(_build_merge_cmd(i, merged_path))
+
+                for cmd in cmd_list:
+                    subprocess.run(cmd, shell = True)
+
+        # Create symlinks for gene expression fastqs
+        merged_names_gex = wildcards.sample + "_GEX"
+        _merge_fastqs(wildcards.sample, merged_names_gex, params.raw_data)
+
+        # Write output file
+        with open(output[0], "w") as out:
+            out.write("done\n")
+
+rule run_spaceranger:
+    input:
+        "{results}/logs/merge_fastqs/{sample}_merge_fastqs_done.out"
+    output:
+        "{results}/logs/run_spaceranger/{sample}_spaceranger_done.out"
+    params:
+        job_name = "run_spaceranger",
+        memory = "select[mem>10] rusage[mem=10]",
+        sample_info = SAMPLES,
+        image_dir = IMAGES,
+        fastq_dir = FASTQ_DIR,
+        probe_set = PROBE_SET,
+        transcriptome = TRANSCRIPTOME,
+        lsf = LSF_TEMPLATE,
+        slide_path = SLIDE_PATH
+    log:
+        "{results}/logs/run_spaceranger/{sample}_spaceranger"
+    threads: 
+        1
+    run:
+        image = os.path.join(params.image_dir, wildcards.sample + ".*")
+        image = glob.glob(os.path.abspath(image))[0]
+        slide = params.sample_info[wildcards.sample][0]
+        area = params.sample_info[wildcards.sample][1]
+        fastq_path = os.path.abspath(params.fastq_dir)
+        sample_full = wildcards.sample + "_GEX"
+        slidefile = os.path.join(params.slide_path, slide + ".gpr")
+        slidefile = os.path.abspath(slidefile)
+        if FFPE:
+            shell(
+                """
+                cd {wildcards.results}
+
+                spaceranger count \
+                --id {wildcards.sample} \
+                --fastqs {fastq_path} \
+                --sample {sample_full} \
+                --image {image} \
+                --slide {slide} \
+                --area {area} \
+                --probe-set {params.probe_set} \
+                --jobmode {params.lsf} \
+                --transcriptome {params.transcriptome} 
+                --slidefile 
+                """
+                )
+        else:
+            shell(
+                """
+                cd {wildcards.results}
+
+                spaceranger count \
+                --id {wildcards.sample} \
+                --fastqs {fastq_path} \
+                --sample {sample_full} \
+                --image {image} \
+                --slide {slide} \
+                --area {area} \
+                --transcriptome {params.transcriptome} \
+                --jobmode {params.lsf} \
+                --slidefile 
+                """
+                )
+        with open(output[0], "w") as out_file:
+            out_file.write("done\n")

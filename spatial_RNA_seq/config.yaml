@@ -1,0 +1,56 @@
+# ==== Config file for running the 10x Space Ranger pipeline ====================
+
+# Path to fastq directory
+RAW_DATA:
+  - "raw_data"
+
+# Path to image directory, images must have same prefix as samples
+IMAGES:
+  "images"
+
+# List of samples, include sample name, slide, and position
+SAMPLES:
+  A_955_OvarianTumor:
+    - "V10D07-047"
+    - "A1"
+  A_GTFB1154_OvarianCancerTumor:
+    - "V10D07-066"
+    - "A1"
+  B_1180_Omentum:
+    - "V10D07-047"
+    - "B1"
+  B_GTFB1191_OvarianCancerTumor:
+    - "V10D07-066"
+    - "B1"
+  C_GTFB_1191_OmentumTumor:
+    - "V10D07-047"
+    - "C1"
+  C_GTFB1170_SmallCellOvarianCancer:
+    - "V10D07-066"
+    - "C1"
+  D_GTFB_1230_OvarianTumor:
+    - "V10D07-047"
+    - "D1"
+  D_GTFB1170_SmallCellOvarianCancer:
+    - "V10D07-066"
+    - "D1"
+
+# Path to the output directory.
+RESULTS:
+    "results"
+
+# Path to the Cell Ranger transcriptome reference.
+TRANSCRIPTOME:
+  "/beevol/home/rbilab/ref/cellranger/human/refdata-cellranger-GRCh38-3.0.0"
+  
+# Path to Cell ranger probe set. Leave blank if sample is fresh frozen
+PROBE_SET:
+  "/beevol/home/wellskri/Analysis/ref/10x_genomics/probe_sets/human/Visium_Human_Transcriptome_Probe_Set_v1.0_GRCh38-2020-A.csv"
+
+# Path containing slide files
+SLIDE_PATH:
+  "slides"
+
+# Path to an LSF template, this is optional.
+LSF_TEMPLATE:
+    "lsf.template"
