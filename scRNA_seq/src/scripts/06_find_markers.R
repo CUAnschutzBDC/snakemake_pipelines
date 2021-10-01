@@ -5,9 +5,6 @@ library(cowplot)
 library(dplyr)
 library(openxlsx)
 
-
-source("src/scripts/functions.R")
-
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
 
@@ -31,17 +28,18 @@ if(normalization_method == "SCT"){
 }
 
 # Set directories
-base_dir <-
-  "/Users/wellskr/Documents/Analysis/Howard_Davidson/Davidson_honeymoon_scRNAseq/"
+base_dir <- "path/to/base/dir"
 
-base_dir_proj <- paste0(base_dir, "results/", sample, "/")
+source(file.path(base_dir, "src", "scripts", "functions.R"))
 
-save_dir <- paste0(base_dir_proj, "R_analysis/")
+base_dir_proj <- file.path(base_dir, "results", sample)
+
+save_dir <- file.path(base_dir_proj, "R_analysis")
 
 gene_lists <- NULL
 
 # Read in the data
-seurat_data <- readRDS(paste0(save_dir, "rda_obj/seurat_processed.rds"))
+seurat_data <- readRDS(file.path(save_dir, "rda_obj", "seurat_processed.rds"))
 
 # Cell type DE -----------------------------------------------------------------
 
@@ -101,4 +99,4 @@ if(ADT){
 seurat_data[[paste0(cell_types, sample)]] <- 
   seurat_data[[cell_types]]
 
-saveRDS(seurat_data, paste0(save_dir, "rda_obj/seurat_processed.rds"))
+saveRDS(seurat_data, file.path(save_dir, "rda_obj", "seurat_processed.rds"))

@@ -120,9 +120,9 @@ first_run <- FALSE
 
 base_dir <- "/Users/wellskr/Documents/Analysis/Holger_Russ/mtec_organoid_multi/"
 
-save_dir <- paste0(base_dir, "results/R_analysis/")
-data_path <- paste0(base_dir,
-  "results/Hashtag_STOC/outs/count/filtered_feature_bc_matrix/")
+save_dir <- file.path(base_dir, "results", "R_analysis")
+data_path <- file.path(base_dir,
+  "results", "Hashtag_STOC/", "outs", "count", "filtered_feature_bc_matrix")
 sample <- "Hashtag_STOC"
 
 # Information for cell mapping

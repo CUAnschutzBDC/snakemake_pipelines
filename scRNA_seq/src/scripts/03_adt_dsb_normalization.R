@@ -6,16 +6,18 @@ sample <- "sample"
 
 HTO <- TRUE
 
-base_dir <-
-  "/Users/wellskr/Documents/Analysis/Howard_Davidson/Davidson_honeymoon_scRNAseq/"
+# Set directories
+base_dir <- "path/to/base/dir"
 
-base_dir_proj <- paste0(base_dir, "results/", sample, "/")
+source(file.path(base_dir, "src", "scripts", "functions.R"))
 
-save_dir <- paste0(base_dir_proj, "R_analysis/")
+base_dir_proj <- file.path(base_dir, "results", sample)
+
+save_dir <- file.path(base_dir_proj, "R_analysis")
 
 # Load in raw data
-sample_path <- paste0(base_dir, "results/", sample,
-                      "/outs/count/raw_feature_bc_matrix/")
+sample_path <- file.path(base_dir, "results", sample,
+                      "outs", "count", "raw_feature_bc_matrix")
 
 sample_data <- Read10X(data.dir = sample_path)
 
@@ -59,7 +61,7 @@ if(HTO){
   negative_object <- subset(sample_object, idents = "Negative")
 
   # Read in my exisitng object as the "positive"
-  positive_object <- readRDS(paste0(save_dir, "rda_obj/seurat_doublet.rds"))
+  positive_object <- readRDS(file.path(save_dir, "rda_obj", "seurat_doublet.rds"))
 
   # Make sure there are no overlapping cells
   length(intersect(rownames(negative_object), rownames(positive_object)))
@@ -71,7 +73,7 @@ if(HTO){
 
 } else {
   # Read in my exisitng object as the "positive"
-  starting_object <- readRDS(paste0(save_dir, "rda_obj/seurat_unprocessed.rds"))
+  starting_object <- readRDS(file.path(save_dir, "rda_obj", "seurat_unprocessed.rds"))
 
   # define a vector of cell-containing barcodes and remove them from unfiltered data 
   stained_cells <- colnames(starting_object)
@@ -139,4 +141,4 @@ positive_object[["RAW_ADT"]] <- CreateAssayObject(data = positive_adt_matrix)
 
 
 # Save
-saveRDS(positive_object, paste0(save_dir, "rda_obj/seurat_doublet.rds"))
+saveRDS(positive_object, file.path(save_dir, "rda_obj", "seurat_doublet.rds"))
