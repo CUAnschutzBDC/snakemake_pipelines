@@ -600,14 +600,17 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
 featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
                          plot_type = "violin",
                          color = NULL, sep_by = "cluster", save_plot = NULL,
-                         nrow = NULL, ncol = NULL){
+                         nrow = NULL, ncol = NULL, col_by = NULL,
+                         plot_median = TRUE, combine = TRUE,
+                         dodge = 1, width = 0.9, assay = NULL){
   geneset <- setNames(geneset, geneset)
   if (plot_type == "jitter") {
     # Make jitter plots colored by cell cycle stage
     if(cell_cycle){
       gene_list_cycle <- lapply(geneset, function(x) jitterPlot(
         seurat_object = seurat_object, y_val = x, x_val = sep_by,
-        col_by = "cycle_phase", color = c("black", "red", "purple")))
+        col_by = "cycle_phase", color = c("black", "red", "purple"),
+        assay = assay))
       
       # Arrange all plots into one figure
       plot_list <- gridExtra::arrangeGrob(grobs = gene_list_cycle,
@@ -618,7 +621,7 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
       
       gene_list_stage <- lapply(geneset, function(x) jitterPlot(
         seurat_object = seurat_object, y_val = x, x_val = sep_by,
-        color = color))
+        color = color, col_by = col_by, assay = assay))
       
       # Make a plot consisting of all plots made above
       plot_list <- gridExtra::arrangeGrob(grobs = gene_list_stage,
@@ -634,7 +637,9 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
     }
     gene_list_stage <- lapply(geneset, function(x) violinPlot(
       seurat_object = seurat_object, y_val = x, x_val = sep_by,
-      color = color, plot_jitter = plot_jitter))
+      color = color, plot_jitter = plot_jitter, col_by = col_by,
+      plot_median = plot_median, dodge = dodge, width = width,
+      assay = assay))
     
     plot_list <- gridExtra::arrangeGrob(grobs = gene_list_stage,
                                         nrow = length(geneset))
@@ -643,13 +648,18 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
   if (!(is.null(save_plot))){
     ggplot2::ggsave(plot_list, plot = base_plot)
   }
-  return(plot_list)
+  if(combine){
+    return(plot_list)
+  } else {
+    return(gene_list_stage)
+  }
 }
 
 jitterPlot <- function(seurat_object, y_val, x_val,
-                       col_by = NULL, color = NULL) {
+                       col_by = NULL, color = NULL,
+                       assay = NULL) {
   plot_data <- plotDF(seurat_object, y_val, x_val,
-                      col_by)
+                      col_by, assay = assay)
   # Determine the number of different colors needed.
   nColors <- length(unique(plot_data$col_by))
   
@@ -659,11 +669,16 @@ jitterPlot <- function(seurat_object, y_val, x_val,
                                                                color = ~col_by)) +
     #ggplot2::theme_classic() + 
     ggplot2::ylab(y_val) + ggplot2::xlab(x_val) +
-    ggplot2::geom_point() + ggplot2::geom_jitter(shape = 16) +
-    ggplot2::theme(axis.title.x=ggplot2::element_blank(),
-                   axis.text.x=ggplot2::element_blank())
-  
-  
+    ggplot2::geom_point() + ggplot2::geom_jitter(shape = 16) 
+  if(is.null(col_by)){
+    plot_base <- plot_base + 
+      ggplot2::theme(axis.title.x=ggplot2::element_blank(),
+                     axis.text.x=ggplot2::element_blank())
+    
+  } else {
+    plot_base <- plot_base +
+      ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  }
   
   if (is.null(color)) {
     plot_base <- plot_base +
@@ -682,9 +697,12 @@ jitterPlot <- function(seurat_object, y_val, x_val,
 
 violinPlot <- function(seurat_object, y_val, x_val,
                        col_by = NULL, color = NULL,
-                       plot_jitter = FALSE) {
+                       plot_jitter = FALSE,
+                       plot_median = TRUE,
+                       dodge = 1, width = 0.9,
+                       assay = NULL) {
   plot_data <- plotDF(seurat_object, y_val, x_val,
-                      col_by)
+                      col_by, assay = assay)
   # Determine the number of different colors needed.
   nColors <- length(unique(plot_data$col_by))
   
@@ -694,10 +712,17 @@ violinPlot <- function(seurat_object, y_val, x_val,
                                                                fill = ~col_by)) +
     #ggplot2::theme_classic() + 
     ggplot2::ylab(y_val) + ggplot2::xlab(x_val) +
-    ggplot2::geom_violin(scale = "width") +
-    ggplot2::theme(axis.title.x=ggplot2::element_blank(),
-                   axis.text.x=ggplot2::element_blank())
-  
+    ggplot2::geom_violin(scale = "width",
+                         position = ggplot2::position_dodge(dodge),
+                         width = width)
+  if(is.null(col_by)){
+    plot_base <- plot_base +
+      ggplot2::theme(axis.title.x=ggplot2::element_blank(),
+                     axis.text.x=ggplot2::element_blank())
+  } else {
+    plot_base <- plot_base +
+      ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  }
   if (plot_jitter) {
     plot_base <- plot_base + ggplot2::geom_jitter(shape = 16)
   }
@@ -712,22 +737,36 @@ violinPlot <- function(seurat_object, y_val, x_val,
     plot_base <- plot_base + ggplot2::scale_fill_manual(values = color, 
                                                         name = col_by)  
   }
+  if(plot_median){
+    plot_base <- plot_base +
+      ggplot2::stat_summary(fun = median, geom = "point", size = 2,
+                            position = ggplot2::position_dodge(dodge))
+  }
   
   return(plot_base)
 }
 
 plotDF <- function(seurat_object, y_val, x_val,
-                   col_by = NULL) {
+                   col_by = NULL, assay = NULL) {
   # Add y_value to a data frame used for plotting. This value can be a gene
   # or a value from meta data like nGene
   # Determine where in Seurat object to find variable to color by
-  if (y_val %in% rownames(seurat_object) |
-      y_val %in% colnames(seurat_object[[]])){
+  if (!is.null(assay) && y_val %in% rownames(seurat_object[[assay]])){
+    DefaultAssay(seurat_object) <- assay
     plot_data <- FetchData(object = seurat_object, vars = y_val)
-  }else if (y_val %in% rownames(seurat_object[["ADT"]])){
+  } else if (!is.null(assay)){
+    stop(paste0("gene (", y_val, ") is not present in your chosen assay"))
+  } else if (y_val == "cluster" | y_val == "Cluster"){
+    plot_data <- as.data.frame(Idents(object = seurat_object))
+  }else if (y_val %in% rownames(seurat_object) |
+            y_val %in% colnames(seurat_object[[]])){
+    plot_data <- FetchData(object = seurat_object, vars = y_val)
+  }else if ("ADT" %in% Seurat::Assays(seurat_object) &&
+            y_val %in% rownames(seurat_object[["ADT"]])){
     plot_data <- FetchData(object = seurat_object, vars = paste0("adt_", y_val))
   }else {
-    stop("y_val must be a gene, metric from meta data")
+    stop(paste0("gene (", y_val,
+                ") must be a gene, metric from meta data or 'cluster'"))
   }
   # Name the column
   names(plot_data) <- "y_value"

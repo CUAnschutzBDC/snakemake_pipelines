@@ -41,7 +41,7 @@ seurat_object <- create_seurat_object(sample = sample,
 
 # Add mitochondrial percent
 seurat_object[["percent.mt"]] <- PercentageFeatureSet(seurat_object,
-                                                      pattern = "^MT-")
+                                                      pattern = mt_pattern)
 
 # Quality plots to determin cutoffs
 rna_qual <- VlnPlot(seurat_object,
