@@ -246,13 +246,47 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
               plots = plot_list))
 }
 
+#' Plot a group of dimensionality reductions
+#' 
+#' This function will plot a dimensionality reduction that exists in your seurat
+#' object (ex. UMAP or PCA). You can color the plot using any gene, adt (if they
+#' exist) or meta data column. You can also highlight just one group from an
+#' existing meta data column. This function will accept a vector in the col_by
+#' argument. These can be any combination of genes or meta data columns. If
+#' multiple options are given, a list of plots will be returned.
+#' @param sample_object A seurat object
+#' @param col_by What to color the plot by. May be a gene, adt, or column
+#' from the metadata. It can either be discrete or continuous. This can be a vector
+#' of selections (example c("cluster", "Ins1")). If a vector is given, the plots will
+#' be returned as a list in the order of the supplied vector.
+#' @param save_plot OPTIONAL A path to a file name if you want the plot saved. It
+#' will be saved as a PDF. If nothing is provided, the plot will be returned but not
+#' saved
+#' @param plot_type OPTIONAL The type of plot. The possible plots can be found in
+#' "reductions" in your seurat object. You can find these with names(object@reductions)
+#' Default is "umap". 
+#' @param dims_use OPTIONAL what dimensions to plot. Default is to plot dimensions 1 and 2
+#' @param highlight_group OPTIONAL if only some cells should be highlighted on the plot.
+#' when set to TRUE you must also set group and meta_data_col. When TRUE, the selected
+#' group will be colored and all other cells will be grey.
+#' @param meta_data_col The column in the seurat metadata (options can be found by calling
+#' colnames(object[[]])) used for coloring the desired group. For example, if you want to
+#' only highlight one cluster, meta_data_col = "cluster".
+#' @param group The group to color. This group must be present in the selected meta data 
+#' column.
+#' @param ... OPTIONAL arguments supplied to plotDimRedSingle
+#' @keywords umap, pca, dimensionality reduction
+#' @import tidyverse
+#' @import RColorBrewer
+#' @import viridis
+#' @export
+
 plotDimRed <- function(sample_object, col_by, save_plot = NULL,
-                       plot_type = "rna.umap",
+                       plot_type = "umap",
                        dims_use = NULL, highlight_group = FALSE,
-                       group = NULL, meta_data_col = "orig.ident",
-                       return_plot = TRUE, ...) {
+                       group = NULL,
+                       meta_data_col = "orig.ident", ...) {
   plot_list <- lapply(col_by, function(x) {
-    print(x)
     plotDimRedSingle(seurat_object = sample_object, col_by = x, plot_type = plot_type,
                      dims_use = dims_use, highlight_group = highlight_group,
                      group = group, meta_data_col = meta_data_col, ...)
@@ -264,6 +298,39 @@ plotDimRed <- function(sample_object, col_by, save_plot = NULL,
   }
   return(plot_list)
 }
+
+#' Plot one dimensionality reduction
+#' 
+#' This function is meant to be called by plotDimRed and not used on it's own!!!
+#' This function will plot a dimensionality reduction that exists in your seurat
+#' object (ex. UMAP or PCA). You can color the plot using any gene, adt (if they
+#' exist) or meta data column. You can also highlight just one group from an
+#' existing meta data column.
+#' @param sample_object A seurat object
+#' @param col_by What to color the plot by. May be a gene, adt, or column
+#' from the metadata. It can either be discrete or continuous.
+#' @param plot_type OPTIONAL The type of plot. The possible plots can be found in
+#' "reductions" in your seurat object. You can find these with names(object@reductions)
+#' Default is "umap". 
+#' @param dims_use OPTIONAL what dimensions to plot. Default is to plot dimensions 1 and 2
+#' @param highlight_group OPTIONAL if only some cells should be highlighted on the plot.
+#' when set to TRUE you must also set group and meta_data_col. When TRUE, the selected
+#' group will be colored and all other cells will be grey.
+#' @param meta_data_col The column in the seurat metadata (options can be found by calling
+#' colnames(object[[]])) used for coloring the desired group. For example, if you want to
+#' only highlight one cluster, meta_data_col = "cluster".
+#' @param group OPTIONAL The group to color. This group must be present in the selected 
+#' meta data column.
+#' @param assasy OPTIONAL The assay to use to color the plot. This is mostly useful if
+#' you have the same names in your ADT and RNA slots so you can ensure you plot the
+#' correct one.
+#' @param ... OPTIONAL arguments supplied to groupDiscretePlots, groupContinuousPlots,
+#' discretePlots, or continuousPlots
+#' @keywords umap, pca, dimensionality reduction
+#' @import tidyverse
+#' @import RColorBrewer
+#' @import viridis
+#' @export
 
 plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
                              dims_use = NULL, highlight_group = FALSE,
@@ -359,10 +426,32 @@ plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
   return(return_plot)
 }
 
-
+#' Plot one dimensionality reduction colored by discrete data
+#' 
+#' This function is meant to be called by plotDimRed and not used on it's own!!!
+#' @param plot_df A dataframe created by plotDimRedSingle
+#' @param col_by What to color the plot by. May be a gene, adt, or column
+#' from the metadata. It can either be discrete or continuous.
+#' @param axis_names OPTIONAL What will be supplied to label the x and y axis
+#' @param color OPTIONAL what colors to use to color the plot. Default is Set1 from
+#' RColorBrewer
+#' @param show_legend OPTIONAL if a legend should be shown on the final plot. Deault is 
+#' TRUE
+#' @param size OPTIONAL The size of the points. Default is 0.25
+#' @param ggrastr OPTINAL If the plot should be rastarized. This is mostly helpful
+#' for large datasets. All of the points will be a png while the rest will still
+#' be editable. Default is FALSE (don't rasterize the plot)
+#' @param raster_scale OPTIONAL The scale to use. Can be helpful if the rasterized
+#' plot looks fuzzy. Default is 1
+#' @param raster_res OPTIONAL. Can be helpful to change if the rasterized plot
+#' looks fuzzy. Default is 300.
+#' @keywords umap, pca, dimensionality reduction
+#' @import tidyverse
+#' @import RColorBrewer
+#' @export
 
 discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
-                          color = NULL, save_plot = NULL, show_legend = TRUE,
+                          color = NULL,show_legend = TRUE,
                           size = 0.25, ggrastr = FALSE,
                           raster_scale = 1, raster_res = 300){
   base_plot <- ggplot2::ggplot(data = plot_df,
@@ -395,16 +484,37 @@ discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
     base_plot <- base_plot + ggplot2::scale_color_manual(values = color, name = col_by)
   }
   
-  if (!(is.null(save_plot))){
-    ggplot2::ggsave(save_plot, plot = base_plot)
-  }
   return(base_plot)
 }
 
 
 
+#' Plot one dimensionality reduction colored by continuous data
+#' 
+#' This function is meant to be called by plotDimRed and not used on it's own!!!
+#' @param plot_df A dataframe created by plotDimRedSingle
+#' @param col_by What to color the plot by. May be a gene, adt, or column
+#' from the metadata. It can either be discrete or continuous.
+#' @param axis_names OPTIONAL What will be supplied to label the x and y axis
+#' @param color OPTIONAL what colors to use to color the plot. Default is magma
+#' from viridis
+#' @param show_legend OPTIONAL if a legend should be shown on the final plot. Deault is 
+#' TRUE
+#' @param size OPTIONAL The size of the points. Default is 0.25
+#' @param ggrastr OPTINAL If the plot should be rastarized. This is mostly helpful
+#' for large datasets. All of the points will be a png while the rest will still
+#' be editable. Default is FALSE (don't rasterize the plot)
+#' @param raster_scale OPTIONAL The scale to use. Can be helpful if the rasterized
+#' plot looks fuzzy. Default is 1
+#' @param raster_res OPTIONAL. Can be helpful to change if the rasterized plot
+#' looks fuzzy. Default is 300.
+#' @keywords umap, pca, dimensionality reduction
+#' @import tidyverse
+#' @import viridis
+#' @export
+
 continuousPlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
-                            color = NULL, save_plot = NULL, show_legend = TRUE,
+                            color = NULL, show_legend = TRUE,
                             size = 0.25, ggrastr = FALSE,
                             raster_scale = 1, raster_res = 300){
   base_plot <- ggplot2::ggplot(data = plot_df, ggplot2::aes_(~dim1, ~dim2)) +
@@ -433,16 +543,37 @@ continuousPlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
     base_plot <- base_plot + 
       ggplot2::scale_color_gradient(low = low, high = high, name = col_by)
   }
-  
-  
-  if (!(is.null(save_plot))){
-    ggplot2::ggsave(save_plot, plot = base_plot)
-  }
+
   return(base_plot)
 }
 
+#' Plot one dimensionality reduction colored by discrete data
+#' 
+#' This function is meant to be called by plotDimRed and not used on it's own!!!
+#' @param plot_df A dataframe created by plotDimRedSingle
+#' @param group The group to color.
+#' @param col_by What to color the plot by. May be a gene, adt, or column
+#' from the metadata. It can either be discrete or continuous.
+#' @param axis_names OPTIONAL What will be supplied to label the x and y axis
+#' @param color OPTIONAL what colors to use to color the plot. Default is Set1
+#' from RColorBrewer
+#' @param show_legend OPTIONAL if a legend should be shown on the final plot. Deault is 
+#' TRUE
+#' @param size OPTIONAL The size of the points. Default is 0.25
+#' @param ggrastr OPTINAL If the plot should be rastarized. This is mostly helpful
+#' for large datasets. All of the points will be a png while the rest will still
+#' be editable. Default is FALSE (don't rasterize the plot)
+#' @param raster_scale OPTIONAL The scale to use. Can be helpful if the rasterized
+#' plot looks fuzzy. Default is 1
+#' @param raster_res OPTIONAL. Can be helpful to change if the rasterized plot
+#' looks fuzzy. Default is 300.
+#' @keywords umap, pca, dimensionality reduction
+#' @import tidyverse
+#' @import RColorBrewer
+#' @export
+
 groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "dim2"),
-                               color = NULL, save_plot = NULL, show_legend = TRUE,
+                               color = NULL, show_legend = TRUE,
                                size = 0.25, ggrastr = FALSE,
                                raster_scale = 1, raster_res = 300) {
   plot1 <- plot_df[plot_df$all == "all_samples", ]
@@ -500,12 +631,34 @@ groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "d
     base_plot <- base_plot +
       ggplot2::scale_color_manual(values = color, name = col_by)
   }
-  
-  if (!(is.null(save_plot))){
-    ggplot2::ggsave(save_plot, plot = base_plot)
-  }
+
   return(base_plot)
 }
+
+#' Plot one dimensionality reduction colored by continuous data
+#' 
+#' This function is meant to be called by plotDimRed and not used on it's own!!!
+#' @param plot_df A dataframe created by plotDimRedSingle
+#' @param group The group to color.
+#' @param col_by What to color the plot by. May be a gene, adt, or column
+#' from the metadata. It can either be discrete or continuous.
+#' @param axis_names OPTIONAL What will be supplied to label the x and y axis
+#' @param color OPTIONAL what colors to use to color the plot. Default is magma from
+#' viridis
+#' @param show_legend OPTIONAL if a legend should be shown on the final plot. Deault is 
+#' TRUE
+#' @param size OPTIONAL The size of the points. Default is 0.25
+#' @param ggrastr OPTINAL If the plot should be rastarized. This is mostly helpful
+#' for large datasets. All of the points will be a png while the rest will still
+#' be editable. Default is FALSE (don't rasterize the plot)
+#' @param raster_scale OPTIONAL The scale to use. Can be helpful if the rasterized
+#' plot looks fuzzy. Default is 1
+#' @param raster_res OPTIONAL. Can be helpful to change if the rasterized plot
+#' looks fuzzy. Default is 300.
+#' @keywords umap, pca, dimensionality reduction
+#' @import tidyverse
+#' @import viridis
+#' @export
 
 groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
                                  limits = NULL, axis_names = c("dim1", "dim2"),
@@ -570,16 +723,55 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
     }
   }
   
-  if (!(is.null(save_plot))){
-    ggplot2::ggsave(save_plot, plot = base_plot)
-  }
   return(base_plot)
 }
+
+#' Plot a group of violin or jitter plots
+#' 
+#' This function will plot a violin or jitter plot of the expression of a gene from
+#' your seurat object. The plot could also be of some continuous data from your
+#' meta data. The violin plot can be separated by any discrete variable in your
+#' meta data. If multiple genes are supplied, a single plot conisiting of all violin 
+#' or jitter plots will be returned with one plot per row.
+#' @param seurat_object A seurat object
+#' @param geneset What genes to use as the y axis in the plot. Can be many, but I
+#' recommend not going above 3 because all plots will be returned as one object.
+#' @param cell_cycle OPTIONAL Only an option if making a jitter plot. Can color each
+#' cel by the cell cycle phase. I originally did this so the colors would be consistent.
+#' Default is FALSE. If set to TRUE, it will override your col_by and color arguments.
+#' @param plot_type OPTIONAL The type of plot. The options are "violin", "jitter", or
+#' "both". "jitter" will make only a jitter plot, "violin" will make only a violin plot
+#' and "both" will make a violin plot with jitter dots overlayed on tope.
+#' @param col_by OPTIONAL what to use to color the cells (or violins). Generally for a violin
+#' plot this is the same as sep_by, but for jitter, it can be any discrete column from meta
+#' data. Default is NULL.
+#' @param sep_by OPTIONAL what to use to separate the jitter or violins on the x axis. 
+#' Can be any discrete value from the metadata. Deafult is "cluster"
+#' @param save_plot OPTIONAL A path to a file name if you want the plot saved. It
+#' will be saved as a PDF. If nothing is provided, the plot will be returned but not
+#' saved
+#' @param meta_data_col The column in the seurat metadata (options can be found by calling
+#' colnames(object[[]])) used for coloring the desired group. For example, if you want to
+#' only highlight one cluster, meta_data_col = "cluster".
+#' @param color The color palette used to color either the points for a jitter plot or
+#' the violins. Default is Set1 from RColorBrewer
+#' @param plot_median OPTIONAL if the median value should be included in the
+#' violin plot. Default is TRUE
+#' @param combine OPTIONAL if the final plots should be made into a figure or
+#' returned as a list. Default (TRUE) returns a figure.
+#' @param dodge OPTIONAL how to adjust the placement of the violin plot. Default is 1
+#' @param width OPTIONAL how to adjust how wide the violin plots are. Default is 0.9
+#' @keywords violin plot, jitter plot
+#' @import tidyverse
+#' @import RColorBrewer
+#' @export
 
 featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
                          plot_type = "violin",
                          color = NULL, sep_by = "cluster", save_plot = NULL,
-                         nrow = NULL, ncol = NULL){
+                         col_by = NULL,
+                         plot_median = TRUE, combine = TRUE,
+                         dodge = 1, width = 0.9){
   geneset <- setNames(geneset, geneset)
   if (plot_type == "jitter") {
     # Make jitter plots colored by cell cycle stage
@@ -597,7 +789,7 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
       
       gene_list_stage <- lapply(geneset, function(x) jitterPlot(
         seurat_object = seurat_object, y_val = x, x_val = sep_by,
-        color = color))
+        color = color, col_by = col_by))
       
       # Make a plot consisting of all plots made above
       plot_list <- gridExtra::arrangeGrob(grobs = gene_list_stage,
@@ -613,7 +805,8 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
     }
     gene_list_stage <- lapply(geneset, function(x) violinPlot(
       seurat_object = seurat_object, y_val = x, x_val = sep_by,
-      color = color, plot_jitter = plot_jitter))
+      color = color, plot_jitter = plot_jitter, col_by = col_by,
+      plot_median = plot_median, dodge = dodge, width = width))
     
     plot_list <- gridExtra::arrangeGrob(grobs = gene_list_stage,
                                         nrow = length(geneset))
@@ -622,8 +815,26 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
   if (!(is.null(save_plot))){
     ggplot2::ggsave(plot_list, plot = base_plot)
   }
-  return(plot_list)
+  if(combine){
+    return(plot_list)
+  } else {
+    return(gene_list_stage)
+  }
 }
+
+#' Plot a jitter plot
+#' 
+#' This function is meant to be called by featDistPlot and not used on it's own!!!
+#' This function will plot a jitter plot.
+#' @param seurat_object A seurat object
+#' @param y_val What to use to create the y-axis
+#' @param x_val What to use to separate along the x-axis
+#' @param col_by OPTIONAL what to use to color the cells (or violins).
+#' @param color The color palette used to color. Default is Set1 from RColorBrewer
+#' @keywords violin plot, jitter plot
+#' @import tidyverse
+#' @import RColorBrewer
+#' @export
 
 jitterPlot <- function(seurat_object, y_val, x_val,
                        col_by = NULL, color = NULL) {
@@ -638,11 +849,16 @@ jitterPlot <- function(seurat_object, y_val, x_val,
                                                                color = ~col_by)) +
     #ggplot2::theme_classic() + 
     ggplot2::ylab(y_val) + ggplot2::xlab(x_val) +
-    ggplot2::geom_point() + ggplot2::geom_jitter(shape = 16) +
-    ggplot2::theme(axis.title.x=ggplot2::element_blank(),
-                   axis.text.x=ggplot2::element_blank())
-  
-  
+    ggplot2::geom_point() + ggplot2::geom_jitter(shape = 16) 
+  if(is.null(col_by)){
+    plot_base <- plot_base + 
+      ggplot2::theme(axis.title.x=ggplot2::element_blank(),
+                     axis.text.x=ggplot2::element_blank())
+    
+  } else {
+    plot_base <- plot_base +
+      ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  }
   
   if (is.null(color)) {
     plot_base <- plot_base +
@@ -658,10 +874,30 @@ jitterPlot <- function(seurat_object, y_val, x_val,
   return(plot_base)
 }  
 
+#' Plot a violin plot
+#' 
+#' This function is meant to be called by featDistPlot and not used on it's own!!!
+#' This function will plot a violin plot.
+#' @param seurat_object A seurat object
+#' @param y_val What to use to create the y-axis
+#' @param x_val What to use to separate along the x-axis
+#' @param col_by OPTIONAL what to use to color the cells (or violins).
+#' @param color OPTIONAL The color palette used to color. Default is Set1 from RColorBrewer
+#' @param plot_jitter OPTIONAL if a jitter plot should also be made. Default is FALSE.
+#' @param plot_median OPTIONAL if the median value should be included in the
+#' violin plot. Default is TRUE
+#' @param dodge OPTIONAL how to adjust the placement of the violin plot. Default is 1
+#' @param width OPTIONAL how to adjust how wide the violin plots are. Default is 0.9
+#' @keywords violin plot, jitter plot
+#' @import tidyverse
+#' @import RColorBrewer
+#' @export
 
 violinPlot <- function(seurat_object, y_val, x_val,
                        col_by = NULL, color = NULL,
-                       plot_jitter = FALSE) {
+                       plot_jitter = FALSE,
+                       plot_median = TRUE,
+                       dodge = 1, width = 0.9) {
   plot_data <- plotDF(seurat_object, y_val, x_val,
                       col_by)
   # Determine the number of different colors needed.
@@ -673,10 +909,17 @@ violinPlot <- function(seurat_object, y_val, x_val,
                                                                fill = ~col_by)) +
     #ggplot2::theme_classic() + 
     ggplot2::ylab(y_val) + ggplot2::xlab(x_val) +
-    ggplot2::geom_violin(scale = "width") +
-    ggplot2::theme(axis.title.x=ggplot2::element_blank(),
-                   axis.text.x=ggplot2::element_blank())
-  
+    ggplot2::geom_violin(scale = "width",
+                         position = ggplot2::position_dodge(dodge),
+                         width = width)
+  if(is.null(col_by)){
+    plot_base <- plot_base +
+      ggplot2::theme(axis.title.x=ggplot2::element_blank(),
+                     axis.text.x=ggplot2::element_blank())
+  } else {
+    plot_base <- plot_base +
+      ggplot2::theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  }
   if (plot_jitter) {
     plot_base <- plot_base + ggplot2::geom_jitter(shape = 16)
   }
@@ -691,9 +934,26 @@ violinPlot <- function(seurat_object, y_val, x_val,
     plot_base <- plot_base + ggplot2::scale_fill_manual(values = color, 
                                                         name = col_by)  
   }
+  if(plot_median){
+    plot_base <- plot_base +
+      ggplot2::stat_summary(fun = median, geom = "point", size = 2,
+                            position = ggplot2::position_dodge(dodge))
+  }
   
   return(plot_base)
 }
+
+#' Make a dataframe
+#' 
+#' This function is meant to be called by featDistPlot and not used on it's own!!!
+#' This function will make a dataframe to pass to plotting functions
+#' @param seurat_object A seurat object
+#' @param y_val What to use to create the y-axis
+#' @param x_val What to use to separate along the x-axis
+#' @param col_by OPTIONAL what to use to color the cells (or violins).
+#' @keywords plots
+#' @import tidyverse
+#' @export
 
 plotDF <- function(seurat_object, y_val, x_val,
                    col_by = NULL) {
@@ -750,17 +1010,53 @@ plotDF <- function(seurat_object, y_val, x_val,
   return(plot_data)
 }
 
+#' Plot a heatmap
+#' 
+#' This function will plot a heatmap with annotations based on the metadata from a 
+#' supplied seurat object. The heatmap is colored by the blueYellow palette from
+#' the archR package.
+#' @param seurat_object A seurat object
+#' @param gene_list What genes to use in the heatmap. The function will take a long time
+#' and the heatmap will be huge if you use all genes.
+#' @param meta_col What column from the meta data should be used to annotate the x axis
+#' of the heatmap.
+#' @param colors OPTIONAL What colors should be used to annotate the x axis. Default is
+#' Set1 from RColorBrewer
+#' @param meta_df OPTIONAL If you want more complex annotations than just annotating by
+#' one column of the meta data, you can include your own meta_df here. If you use this
+#' option, you must include your own color list, where the names of the list match
+#' each column of your meta_df and the vector of colors in each item of the list match
+#' the number of items in the meta data column. Additionally, if you use this
+#' option, you must make sure that the cell names from the meta data match the cell names
+#' in your Seurat object. I've found that this is a particular issue when using average
+#' expression of clusters.
+#' @param color_list OPTIONAL only needs to be included when meta_df is set. This should be
+#' a list where the names of the list match each column of your meta_df and the vector of
+#' colors in each item of the list match the number of items in the meta data column.
+#' @param max_val OPTIONAL What value to cap the z-score shown. This makes it so highly
+#' variable genes don't completely controll the color scale. Default is 2.5
+#' @param min_val OPTIONAL What value to cap the z-score shown. This makes it so highly
+#' variable genes don't completely controll the color scale. Default is -2.5
+#' @param cluster_rows OPTIONAL if rows should be clustered. Default is FALSE
+#' @param cluster_columns OPTIONAL if columns should be clustered. Default is FALSE
+#' @param average_expression OPTIONAL if the average expression of clusters should be 
+#' computed before making the heatmap. This option makes much prettier plots, but
+#' can be a bit buggy, I'm still working on making it work more robustly.
+#' @keywords gene expression, heatmap
+#' @import tidyverse
+#' @import RColorBrewer
+#' @export
+
 plot_heatmap <- function(seurat_object, gene_list, meta_col,
                          colors = NULL, meta_df = NULL, color_list = NULL,
                          max_val = 2.5, min_val = -2.5, cluster_rows = FALSE,
                          cluster_cols = FALSE, average_expression = FALSE,
-                         plot_meta_col = TRUE, show_rownames = TRUE,
-                         show_colnames = FALSE, ...){
+                         plot_meta_col = TRUE){
   if(average_expression){
     # Find average expression of genes in clusters
     Idents(seurat_object) <- meta_col
     heatmap_df <- AverageExpression(seurat_object, seurat = FALSE,
-                                    group.by = "ident")
+                                    group.by = meta_col)
     heatmap_df <- heatmap_df$RNA
     # Test if the colnames look like integers
     character_vals <- 
@@ -843,12 +1139,11 @@ plot_heatmap <- function(seurat_object, gene_list, meta_col,
   
   heatmap <- pheatmap(heatmap_scale, cluster_rows = cluster_rows,
                       cluster_cols = cluster_cols,
-                      show_rownames = show_rownames,
-                      show_colnames = show_colnames,
-                      annotation_col = sample_info,
+                      show_rownames = TRUE,
+                      show_colnames = FALSE, annotation_col = sample_info,
                       annotation_colors = coloring, color = blueYellow,
                       border_color = NA, clustering_method = "complete",
-                      silent = TRUE, ...)
+                      silent = TRUE)
   return(heatmap)
 }
 
