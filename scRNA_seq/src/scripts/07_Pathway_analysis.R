@@ -7,8 +7,6 @@ library(pathview)
 library(openxlsx)
 library(gprofiler2)
 
-source("src/scripts/functions.R")
-
 pval <- 0.05
 logfc <- 0.5
 
@@ -38,18 +36,20 @@ if(normalization_method == "SCT"){
   SCT <- FALSE
   seurat_assay <- "RNA"
 }
+
 # Set directories
-base_dir <-
-  "/Users/wellskr/Documents/Analysis/Howard_Davidson/Davidson_honeymoon_scRNAseq/"
+base_dir <- "path/to/base/dir"
 
-base_dir_proj <- paste0(base_dir, "results/", sample, "/")
+source(file.path(base_dir, "src", "scripts", "functions.R"))
 
-save_dir <- paste0(base_dir_proj, "R_analysis/")
+base_dir_proj <- file.path(base_dir, "results", sample)
 
-out_dir <- paste0(save_dir, "images/pathways/")
+save_dir <- file.path(base_dir_proj, "R_analysis")
 
-out_dir_go <- paste0(save_dir, "images/GSEA/")
-out_dir_text <- paste0(save_dir, "files/GSEA/")
+out_dir <- file.path(save_dir, "images", "pathways")
+
+out_dir_go <- file.path(save_dir, "images", "GSEA")
+out_dir_text <- file.path(save_dir, "files", "GSEA")
 
 # Create output directory
 out_dir %>%
@@ -63,7 +63,7 @@ out_dir_text %>%
 
 
 # Read in the data
-seurat_data <- readRDS(paste0(save_dir, "rda_obj/seurat_processed.rds"))
+seurat_data <- readRDS(file.path(save_dir, "rda_obj", "seurat_processed.rds"))
 
 
 # Cell type DE -----------------------------------------------------------------
@@ -80,14 +80,14 @@ gost_output <- run_gost(seurat_de = marker_genes,
 
 # Save gost output
 save_gost(gost_output,
-          save_dir_plots = paste0(out_dir_go, "celltype/"),
-          save_dir_text = paste0(out_dir_text, "celltype/"))
+          save_dir_plots = file.path(out_dir_go, "celltype"),
+          save_dir_text = file.path(out_dir_text, "celltype"))
 
 
 
 de_to_pathview(seurat_de = marker_genes,
                path_id_list = path_id_list,
-               out_dir = paste0(out_dir, "celltype"),
+               out_dir = file.path(out_dir, "celltype"),
                seurat_assay = seurat_assay,
                test_idents = cell_types,
                gen_id = gen_id)
@@ -106,13 +106,13 @@ gost_output <- run_gost(seurat_de = marker_genes,
 
 # Save gost output
 save_gost(gost_output,
-          save_dir_plots = paste0(out_dir_go, "cluster/"),
-          save_dir_text = paste0(out_dir_text, "cluster/"))
+          save_dir_plots = file.path(out_dir_go, "cluster"),
+          save_dir_text = file.path(out_dir_text, "cluster"))
 
 
 de_to_pathview(seurat_de = marker_genes,
                path_id_list = path_id_list,
-               out_dir = paste0(out_dir, "cluster"),
+               out_dir = file.path(out_dir, "cluster"),
                seurat_assay = seurat_assay,
                test_idents = clusters,
                gen_id = gen_id)

@@ -4,8 +4,6 @@ library(tidyr)
 library(cowplot)
 library(dplyr)
 
-source("functions.R")
-
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
 
@@ -19,70 +17,88 @@ if(normalization_method == "SCT"){
   seurat_assay <- "RNA"
 }
 
-# Set directories
-base_dir <- "/Users/wellskr/Documents/Analysis/Holger_Russ/mtec_organoid_multi/"
+ADT <- TRUE
+HTO <- TRUE
 
-save_dir <- paste0(base_dir, "results/R_analysis/")
+vars.to.regress <- "percent.mt"
+
+# Set directories
+base_dir <- "path/to/base/dir"
+
+source(file.path(base_dir, "src", "scripts", "functions.R"))
+
+save_dir <- file.path(base_dir, "results", "R_analysis")
 
 sample <- "sample"
 
+mt_pattern <- "^MT-" # "^MT-" for human, "^mt-" for mice
+
 # Create seurat object
-stoc_data <- create_seurat_object(sample = sample,
-                                  count_path = paste0(base_dir, "results"),
-                                  ADT = TRUE, hashtag = TRUE
-                                  )
+seurat_object <- create_seurat_object(sample = sample,
+                                      count_path = paste0(base_dir, "results"),
+                                      ADT = ADT, hashtag = HTO
+                                      )
 
 # Add mitochondrial percent
-stoc_data[["percent.mt"]] <- PercentageFeatureSet(stoc_data,
-                                                  pattern = "^MT-")
+seurat_object[["percent.mt"]] <- PercentageFeatureSet(seurat_object,
+                                                      pattern = mt_pattern)
 
 # Quality plots to determin cutoffs
-rna_qual <- VlnPlot(stoc_data,
+rna_qual <- VlnPlot(seurat_object,
                     features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                     ncol = 3)
 
-adt_qual <- VlnPlot(stoc_data, features = c("nCount_ADT", "nFeature_ADT"))
-
-pdf(paste0(save_dir, "images/quality_plots.pdf"))
-rna_qual
-adt_qual
-dev.off()
-# Remove outliers
-stoc_data <- subset(x = stoc_data, subset = percent.mt < 10 &
-      nFeature_RNA > 200 & nFeature_RNA < 6000 & nCount_ADT < 10000)
-
-# Normalization
-if(SCT){
-  # Single Cell Transform normalization
-  stoc_data <- SCTransform(stoc_data, vars.to.regress = "percent.mt",
-                           verbose = FALSE)
-} else {
-  # Default normalization
-  DefaultAssay(stoc_data) <- "RNA"
-  stoc_data <- NormalizeData(stoc_data) %>% 
-    FindVariableFeatures() %>%
-    ScaleData()
+if(ADT){
+  adt_qual <- VlnPlot(seurat_object, features = c("nCount_ADT", "nFeature_ADT"))
 }
 
-# Demultiplex
-stoc_data <- HTODemux(stoc_data, assay = "HTO", positive.quantile = 0.90)
-
-
-# Plots
-ridge_p <- RidgePlot(stoc_data, assay = "HTO",
-                     features = rownames(stoc_data[["HTO"]])[1:2], ncol = 2)
-scatter_p <- FeatureScatter(stoc_data,
-                            feature1 = "hto_Hashtag-STOC-86-008",
-                            feature2 = "hto_Hashtag-STOC-86-009")
-Idents(stoc_data) <- "HTO_classification.global"
-vln_p <- VlnPlot(stoc_data, features = "nCount_RNA",
-                 pt.size = 0.1, log = TRUE)
-
-pdf(paste0(save_dir, "images/HTO_plots.pdf"))
-ridge_p
-scatter_p
-vln_p
+pdf(file.path(save_dir, "images", "quality_plots.pdf"))
+rna_qual
+if(ADT){
+  adt_qual
+}
 dev.off()
+# Remove outliers
+if(ADT){
+  seurat_object <- subset(x = seurat_object, subset = percent.mt < 10 &
+                          nFeature_RNA > 200 & nFeature_RNA < 6000 & 
+                          nCount_ADT < 10000)
+} else {
+  seurat_object <- subset(x = seurat_object, subset = percent.mt < 10 &
+                          nFeature_RNA > 200 & nFeature_RNA < 6000)
+}
 
-saveRDS(stoc_data, file = paste0(save_dir, "stoc_start.rds"))
+# Normalization
+# Single Cell Transform normalization
+seurat_object <- SCTransform(seurat_object, vars.to.regress = vars.to.regress,
+                             verbose = FALSE)
 
+# Default normalization
+DefaultAssay(seurat_object) <- "RNA"
+seurat_object <- NormalizeData(seurat_object) %>% 
+  FindVariableFeatures() %>%
+  ScaleData(vars.to.regress = vars.to.regress)
+
+if(HTO){
+  # Demultiplex
+  seurat_object <- HTODemux(seurat_object, assay = "HTO", positive.quantile = 0.90)
+
+
+  # Plots
+  ridge_p <- RidgePlot(seurat_object, assay = "HTO",
+                       features = rownames(stoc_data[["HTO"]])[1:2], ncol = 2)
+  scatter_p <- FeatureScatter(seurat_object,
+                              feature1 = "hto_Hashtag-STOC-86-008",
+                              feature2 = "hto_Hashtag-STOC-86-009")
+  Idents(seurat_object) <- "HTO_classification.global"
+  vln_p <- VlnPlot(seurat_object, features = "nCount_RNA",
+                   pt.size = 0.1, log = TRUE)
+
+  pdf(file.path(save_dir, "images", "HTO_plots.pdf"))
+  ridge_p
+  scatter_p
+  vln_p
+  dev.off()
+}
+
+saveRDS(seurat_object, file = file.path(save_dir, "seurat_start.rds"))

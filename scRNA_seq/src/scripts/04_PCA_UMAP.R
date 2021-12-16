@@ -4,8 +4,6 @@ library(tidyverse)
 library(cowplot)
 library(harmony)
 
-source("src/scripts/functions.R")
-
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
 
@@ -26,17 +24,19 @@ if(normalization_method == "SCT"){
   seurat_assay <- "RNA"
 }
 
+
 # Set directories
-base_dir <-
-  "/Users/wellskr/Documents/Analysis/Howard_Davidson/Davidson_honeymoon_scRNAseq/"
+base_dir <- "path/to/base/dir"
 
-base_dir_proj <- paste0(base_dir, "results/", sample, "/")
+source(file.path(base_dir, "src", "scripts", "functions.R"))
 
-save_dir <- paste0(base_dir_proj, "R_analysis/")
+base_dir_proj <- file.path(base_dir, "results", sample)
+
+save_dir <- file.path(base_dir_proj, "R_analysis")
 
 
 # Read in the data
-seurat_data <- readRDS(paste0(save_dir, "rda_obj/seurat_doublet.rds"))
+seurat_data <- readRDS(file.path(save_dir, "rda_obj", "seurat_doublet.rds"))
 
 # Remove doublets
 Idents(seurat_data) <- "Doublet_finder"
@@ -58,7 +58,7 @@ seurat_data <- PCA_dimRed(seurat_data, assay = seurat_assay)
 RNA_plots <- plot_PCA(HTO = HTO, assay = seurat_assay,
                       sample_object = seurat_data)
 
-pdf(paste0(save_dir, "images/RNA_pca.pdf"))
+pdf(file.path(save_dir, "images", "RNA_pca.pdf"))
 print(RNA_plots)
 dev.off()
 
@@ -68,7 +68,7 @@ if(ADT){
 
   ADT_plots <- plot_PCA(HTO = HTO, assay = "ADT", sample_object = seurat_data)
 
-  pdf(paste0(save_dir, "images/RNA_pca.pdf"))
+  pdf(file.path(save_dir, "images", "RNA_pca.pdf"))
   print(ADT_plots)
   dev.off()
 }
@@ -144,7 +144,7 @@ if(ADT){
   if(HTO){
     col_by_list <- c(col_by_list, "HTO_classification")
   }
-  save_plot <- paste0(save_dir, "images/combined_umap.pdf")
+  save_plot <- file.path(save_dir, "images", "combined_umap.pdf")
   plot_list <- plotDimRed(sample_object = seurat_data,
                           save_plot = save_plot,
                           col_by = col_by_list, return_plot = TRUE,
@@ -161,4 +161,4 @@ if(ADT){
     NoLegend()
 }
 
-saveRDS(seurat_data, paste0(save_dir, "rda_obj/seurat_processed.rds"))
+saveRDS(seurat_data, file.path(save_dir, "rda_obj", "seurat_processed.rds"))

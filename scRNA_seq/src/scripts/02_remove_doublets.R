@@ -1,8 +1,6 @@
 library(DoubletFinder)
 library(Seurat)
 
-source("src/scripts/functions.R")
-
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
 
@@ -22,14 +20,15 @@ if(normalization_method == "SCT"){
 }
 
 # Set directories
-base_dir <-
-  "/Users/wellskr/Documents/Analysis/Howard_Davidson/Davidson_honeymoon_scRNAseq/"
+base_dir <- "path/to/base/dir"
 
-base_dir_proj <- paste0(base_dir, "results/", sample, "/")
-save_dir <- paste0(base_dir_proj, "R_analysis/")
+source(file.path(base_dir, "src", "scripts", "functions.R"))
+
+base_dir_proj <- file.path(base_dir, "results", sample)
+save_dir <- file.path(base_dir_proj, "R_analysis")
 
 # Read in data
-seurat_data <- readRDS(paste0(save_dir, "rda_obj/seurat_start.rds"))
+seurat_data <- readRDS(file.path(save_dir, "rda_obj", "seurat_start.rds"))
 
 # Remove "negatives"
 if(HTO){
@@ -86,4 +85,4 @@ seurat_data <- doubletFinder_v3(seurat_data, PCs = 1:10, pN = 0.25,
 
 seurat_data$Doublet_finder <- seurat_data$DF.classifications_0.25_0.005_700
 
-saveRDS(seurat_data, paste0(save_dir, "rda_obj/seurat_doublet.rds"))
+saveRDS(seurat_data, file.path(save_dir, "rda_obj", "seurat_doublet.rds"))

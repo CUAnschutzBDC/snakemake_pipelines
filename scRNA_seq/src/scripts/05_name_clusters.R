@@ -6,8 +6,6 @@ library(dplyr)
 library(clustifyr)
 library(viridis)
 
-source("src/scripts/functions.R")
-
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
 
@@ -29,22 +27,23 @@ if(normalization_method == "SCT"){
 }
 
 # Set directories
-base_dir <-
-  "/Users/wellskr/Documents/Analysis/Howard_Davidson/Davidson_honeymoon_scRNAseq/"
+base_dir <- "path/to/base/dir"
 
-base_dir_proj <- paste0(base_dir, "results/", sample, "/")
+source(file.path(base_dir, "src", "scripts", "functions.R"))
 
-save_dir <- paste0(base_dir_proj, "R_analysis/")
+base_dir_proj <- file.path(base_dir, "results", sample)
+
+save_dir <- file.path(base_dir_proj, "R_analysis")
 
 ## Single cell reference -------------------------------------------------------
-ref_dir <- paste0(base_dir, "files/celltype_refs/hca_pbmc/")
+ref_dir <- file.path(base_dir, "files", "celltype_refs", "hca_pbmc")
 
 # Read in the data
-seurat_data <- readRDS(paste0(save_dir, "rda_obj/seurat_processed.rds"))
+seurat_data <- readRDS(file.path(save_dir, "rda_obj", "seurat_processed.rds"))
 DefaultAssay(seurat_data) <- seurat_assay
 
 # Ref info
-ref_obj <- readRDS(paste0(ref_dir, "processed_obj.rda"))
+ref_obj <- readRDS(file.path(ref_dir, "processed_obj.rda"))
 
 # Make average reference for celltype
 Idents(ref_obj) <- "Celltype_Annotation"
@@ -86,7 +85,7 @@ seurat_data$combined_class <- sub(".*\\.", "",
 
 # Check the classes on the RNA data because this best separates the activation
 # levels
-pdf(paste0(save_dir, "images/class_mapping.pdf"))
+pdf(file.path(save_dir, "images", "class_mapping.pdf"))
 plots <- plotDimRed(seurat_data, col_by = c("RNA_class",
                                             "ADT_class",
                                             "combined_class"),
@@ -99,10 +98,10 @@ print(plots[[3]])
 dev.off()
 
 ## Bulk reference --------------------------------------------------------------
-ref_dir <- paste0(base_dir, "files/celltype_refs/bulk_RNAseq/")
+ref_dir <- file.path(base_dir, "files", "celltype_refs", "bulk_RNAseq")
 
 # Ref info
-ref_mat <- read.table(paste0(ref_dir,
+ref_mat <- read.table(file.path(ref_dir,
                              "gene_id_GSE118165_RNA_gene_abundance.txt"))
 
 seurat_res_list <- name_clusters(seurat_object = seurat_data,
@@ -115,4 +114,4 @@ seurat_res_list <- name_clusters(seurat_object = seurat_data,
 
 seurat_data <- seurat_res_list$object
 
-saveRDS(seurat_data, paste0(save_dir, "rda_obj/seurat_processed.rds"))
+saveRDS(seurat_data, file.path(save_dir, "rda_obj", "seurat_processed.rds"))

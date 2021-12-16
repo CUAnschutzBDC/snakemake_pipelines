@@ -1,7 +1,9 @@
+# Single cell RNA-seq functions ------------------------------------------------
 create_seurat_object <- function(sample, count_path, ADT = TRUE, hashtag = TRUE,
                                  min_features = 200, min_cells = 3,
                                  hashtag_idents = NULL){
-  sample_path <- paste0(count_path, "/", sample, "/outs/count/filtered_feature_bc_matrix")
+  sample_path <- file.path(count_path, sample,
+                           "outs", "count", "filtered_feature_bc_matrix")
   sample_data <- Read10X(data.dir = sample_path)
   if (ADT | hashtag){
     sample_object <- CreateSeuratObject(counts = sample_data[["Gene Expression"]],
@@ -77,7 +79,8 @@ PCA_dimRed <- function(sample_object, assay = "RNA",
 }
 
 plot_PCA <- function(sample_object, HTO = FALSE, assay = "RNA",
-                     jackstraw = TRUE, reduction = NULL){
+                     jackstraw = TRUE, reduction = NULL,
+                     data_type = "RNA", ffpe = TRUE){
   if(!is.null(reduction)){
     reduction <- reduction
   } else if(assay == "RNA"){
@@ -92,21 +95,36 @@ plot_PCA <- function(sample_object, HTO = FALSE, assay = "RNA",
     stop("'assay' must be 'ADT', 'SCT', 'integrated', or 'RNA' or
          reduction must be supplied")
   }
+  if(data_type == "RNA"){
+    if(HTO){
+      plot_list <- c("orig.ident", "percent.mt",
+                     "nFeature_RNA", "nCount_RNA",
+                     "HTO_classification")
+    } else{
+      plot_list <- c("orig.ident", "percent.mt",
+                     "nFeature_RNA", "nCount_RNA")
+    }
+
+  } else if(data_type == "spatial"){
+    if(ffpe){
+      plot_list <- c("orig.ident",
+                     "nFeature_Spatial",
+                     "nCount_Spatial")
+    } else {
+      plot_list <- c("orig.ident", "percent.mt",
+                     "nFeature_Spatial",
+                     "nCount_Spatial")   
+    }
+  }
   plots <- list()
   plots$pca_loadings <- VizDimLoadings(sample_object, dims = 1:2,
                                        reduction = reduction)
-  plots$pca_plot <- plotDimRed(sample_object, plot_type = reduction,
-                               col_by = "orig.ident")
-  plots$mito_plot <- plotDimRed(sample_object, plot_type = reduction,
-                                col_by = "percent.mt")
-  plots$nfeature_plot <- plotDimRed(sample_object, plot_type = reduction,
-                                    col_by = "nFeature_RNA")
-  plots$ncount_plot <- plotDimRed(sample_object, plot_type = reduction,
-                                  col_by = "nCount_RNA")
-  if(HTO){
-    plots$hto_pca_plot <- plotDimRed(sample_object, plot_type = reduction,
-                                     col_by = "HTO_classification")
-  }
+  feature_plots <- plotDimRed(sample_object, plot_type = reduction,
+                              col_by = plot_list)
+  
+  names(feature_plots) <- plot_list
+  
+  plots <- c(plots, feature_plots)
   
   if(assay == "RNA" && jackstraw){
     sample_object <- JackStraw(sample_object, num.replicate = 100,
@@ -130,7 +148,8 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
     }
     DefaultAssay(sample_object) = "RNA"
     if(!is.null(save_dir)){
-      save_plot <- paste0(save_dir, "images/rnaUMAP_", sample_name, ".pdf")
+      save_plot <- file.path(save_dir, "images",
+                             paste0("rnaUMAP_", sample_name, ".pdf"))
     }
     sample_object <- FindNeighbors(sample_object, dims = 1:nPCs,
                                    reduction = reduction)
@@ -160,7 +179,8 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
       key <- reduction
     }
     DefaultAssay(sample_object) <- "ADT"
-    save_plot <- paste0(save_dir, "images/adtUMAP_", sample_name, ".pdf")
+    save_plot <- file.path(save_dir, "images",
+                           paste0("adtUMAP_", sample_name, ".pdf"))
     sample_object <- FindNeighbors(sample_object,
                                    features = rownames(sample_object),
                                    dims = 1:nPCs, reduction = reduction)
@@ -191,7 +211,8 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
       key <- reduction
     }
     DefaultAssay(sample_object) = "SCT"
-    save_plot <- paste0(save_dir, "images/rnasctUMAP_", sample_name, ".pdf")
+    save_plot <- file.path(save_dir, "images",
+                           paste0("rnasctUMAP_", sample_name, ".pdf"))
     sample_object <- FindNeighbors(sample_object, reduction = reduction,
                                    dims = 1:nPCs)
     sample_object <- FindClusters(sample_object, resolution = resolution)
@@ -586,19 +607,19 @@ groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "d
   
   if(ggrastr){
     base_plot <- base_plot + ggrastr::geom_point_rast(data = plot1, 
-                                                 ggplot2::aes_(~dim1, ~dim2), 
-                                                 color = "#DCDCDC",
-                                                 size = size,
-                                                 show.legend = FALSE,
-                                                 scale = raster_scale,
-                                                 raster.dpi = raster_res)
+                                                      ggplot2::aes_(~dim1, ~dim2), 
+                                                      color = "#DCDCDC",
+                                                      size = size,
+                                                      show.legend = FALSE,
+                                                      scale = raster_scale,
+                                                      raster.dpi = raster_res)
     base_plot <- base_plot + ggrastr::geom_point_rast(data = plot2,
-                                                 ggplot2::aes_(~dim1, ~dim2,
-                                                               color = ~colour_metric),
-                                                 size = size,
-                                                 show.legend = show_legend,
-                                                 scale = raster_scale,
-                                                 raster.dpi = raster_res)  
+                                                      ggplot2::aes_(~dim1, ~dim2,
+                                                                    color = ~colour_metric),
+                                                      size = size,
+                                                      show.legend = show_legend,
+                                                      scale = raster_scale,
+                                                      raster.dpi = raster_res)  
   } else {
     base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
                                                  ggplot2::aes_(~dim1, ~dim2), 
@@ -675,19 +696,19 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
   
   if(ggrastr){
     base_plot <- base_plot + ggrastr::geom_point_rast(data = plot1, 
-                                                 ggplot2::aes_(~dim1, ~dim2), 
-                                                 color = "#DCDCDC",
-                                                 size = size,
-                                                 show.legend = FALSE,
-                                                 scale = raster_scale,
-                                                 raster.dpi = raster_res)
+                                                      ggplot2::aes_(~dim1, ~dim2), 
+                                                      color = "#DCDCDC",
+                                                      size = size,
+                                                      show.legend = FALSE,
+                                                      scale = raster_scale,
+                                                      raster.dpi = raster_res)
     base_plot <- base_plot + ggrastr::geom_point_rast(data = plot2,
-                                                 ggplot2::aes_(~dim1, ~dim2,
-                                                               color = ~colour_metric),
-                                                 size = size,
-                                                 show.legend = show_legend,
-                                                 scale = raster_scale,
-                                                 raster.dpi = raster_res)    
+                                                      ggplot2::aes_(~dim1, ~dim2,
+                                                                    color = ~colour_metric),
+                                                      size = size,
+                                                      show.legend = show_legend,
+                                                      scale = raster_scale,
+                                                      raster.dpi = raster_res)    
   } else {
     base_plot <- base_plot + ggplot2::geom_point(data = plot1, 
                                                  ggplot2::aes_(~dim1, ~dim2), 
@@ -700,7 +721,7 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
                                                  size = size,
                                                  show.legend = show_legend)
   }
-
+  
   base_plot <- base_plot + #ggplot2::theme_classic() +
     ggplot2::ggtitle(paste0(plot_name_comb, " ", col_by)) +
     ggplot2::xlab(axis_names[1]) +
@@ -768,17 +789,18 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
 
 featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
                          plot_type = "violin",
-                         color = NULL, sep_by = "cluster", save_plot = NULL,
-                         col_by = NULL,
+                         color = NULL, sep_by = "cluster",
+                         save_plot = NULL, col_by = NULL,
                          plot_median = TRUE, combine = TRUE,
-                         dodge = 1, width = 0.9){
+                         dodge = 1, width = 0.9, assay = NULL){
   geneset <- setNames(geneset, geneset)
   if (plot_type == "jitter") {
     # Make jitter plots colored by cell cycle stage
     if(cell_cycle){
       gene_list_cycle <- lapply(geneset, function(x) jitterPlot(
         seurat_object = seurat_object, y_val = x, x_val = sep_by,
-        col_by = "cycle_phase", color = c("black", "red", "purple")))
+        col_by = "cycle_phase", color = c("black", "red", "purple"),
+        assay = assay))
       
       # Arrange all plots into one figure
       plot_list <- gridExtra::arrangeGrob(grobs = gene_list_cycle,
@@ -789,7 +811,7 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
       
       gene_list_stage <- lapply(geneset, function(x) jitterPlot(
         seurat_object = seurat_object, y_val = x, x_val = sep_by,
-        color = color, col_by = col_by))
+        color = color, col_by = col_by, assay = assay))
       
       # Make a plot consisting of all plots made above
       plot_list <- gridExtra::arrangeGrob(grobs = gene_list_stage,
@@ -806,7 +828,8 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
     gene_list_stage <- lapply(geneset, function(x) violinPlot(
       seurat_object = seurat_object, y_val = x, x_val = sep_by,
       color = color, plot_jitter = plot_jitter, col_by = col_by,
-      plot_median = plot_median, dodge = dodge, width = width))
+      plot_median = plot_median, dodge = dodge, width = width,
+      assay = assay))
     
     plot_list <- gridExtra::arrangeGrob(grobs = gene_list_stage,
                                         nrow = length(geneset))
@@ -837,9 +860,10 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
 #' @export
 
 jitterPlot <- function(seurat_object, y_val, x_val,
-                       col_by = NULL, color = NULL) {
+                       col_by = NULL, color = NULL,
+                       assay = NULL) {
   plot_data <- plotDF(seurat_object, y_val, x_val,
-                      col_by)
+                      col_by, assay = assay)
   # Determine the number of different colors needed.
   nColors <- length(unique(plot_data$col_by))
   
@@ -897,9 +921,10 @@ violinPlot <- function(seurat_object, y_val, x_val,
                        col_by = NULL, color = NULL,
                        plot_jitter = FALSE,
                        plot_median = TRUE,
-                       dodge = 1, width = 0.9) {
+                       dodge = 1, width = 0.9,
+                       assay = NULL) {
   plot_data <- plotDF(seurat_object, y_val, x_val,
-                      col_by)
+                      col_by, assay = assay)
   # Determine the number of different colors needed.
   nColors <- length(unique(plot_data$col_by))
   
@@ -956,17 +981,26 @@ violinPlot <- function(seurat_object, y_val, x_val,
 #' @export
 
 plotDF <- function(seurat_object, y_val, x_val,
-                   col_by = NULL) {
+                   col_by = NULL, assay = NULL) {
   # Add y_value to a data frame used for plotting. This value can be a gene
   # or a value from meta data like nGene
   # Determine where in Seurat object to find variable to color by
-  if (y_val %in% rownames(seurat_object) |
-      y_val %in% colnames(seurat_object[[]])){
+  if (!is.null(assay) && y_val %in% rownames(seurat_object[[assay]])){
+    DefaultAssay(seurat_object) <- assay
     plot_data <- FetchData(object = seurat_object, vars = y_val)
-  }else if (y_val %in% rownames(seurat_object[["ADT"]])){
+  } else if (!is.null(assay)){
+    stop(paste0("gene (", y_val, ") is not present in your chosen assay"))
+  } else if (y_val == "cluster" | y_val == "Cluster"){
+    plot_data <- as.data.frame(Idents(object = seurat_object))
+  }else if (y_val %in% rownames(seurat_object) |
+            y_val %in% colnames(seurat_object[[]])){
+    plot_data <- FetchData(object = seurat_object, vars = y_val)
+  }else if ("ADT" %in% Seurat::Assays(seurat_object) &&
+            y_val %in% rownames(seurat_object[["ADT"]])){
     plot_data <- FetchData(object = seurat_object, vars = paste0("adt_", y_val))
   }else {
-    stop("y_val must be a gene, metric from meta data")
+    stop(paste0("gene (", y_val,
+                ") must be a gene, metric from meta data or 'cluster'"))
   }
   # Name the column
   names(plot_data) <- "y_value"
@@ -1508,9 +1542,9 @@ de_to_pathview <- function(path_id_list, seurat_object = NULL,
 #' @export
 
 find_markers <- function(seurat_object,
-                        test_idents = NULL, seurat_assay = "RNA",
-                        group = NULL, group_ident_1 = NULL,
-                        group_ident_2 = NULL){
+                         test_idents = NULL, seurat_assay = "RNA",
+                         group = NULL, group_ident_1 = NULL,
+                         group_ident_2 = NULL){
   if(!is.null(test_idents)){
     Idents(seurat_object) <- test_idents
   }
@@ -1679,9 +1713,9 @@ run_gost <- function(seurat_de = NULL, seurat_object = NULL,
 #' @export
 
 make_go_plots <- function(gost_output,
-                         sources = c("GO:BP", "KEGG", "REAC", "TF"),
-                         plot_colors = c("blue", "red"),
-                         intersection_cutoff = 5){
+                          sources = c("GO:BP", "KEGG", "REAC", "TF"),
+                          plot_colors = c("blue", "red"),
+                          intersection_cutoff = 5){
   all_plots <- lapply(unique(gost_output$result$query), function(query){
     source_plots <- lapply(sources,
                            function(source) make_go_plot_single(
@@ -1713,8 +1747,8 @@ make_go_plots <- function(gost_output,
 #' @export
 
 make_go_plot_single <- function(gost_output, gost_query, gost_source,
-                         plot_colors = c("blue", "red"),
-                         intersection_cutoff = 5){
+                                plot_colors = c("blue", "red"),
+                                intersection_cutoff = 5){
   gost_output_one <- gost_output$result %>%
     dplyr::filter(query == gost_query & source == gost_source &
                     intersection_size >= intersection_cutoff) %>%
@@ -1766,7 +1800,7 @@ save_gost <- function(gost_output, save_dir_plots, save_dir_text = NULL,
       dir.create(showWarnings = F)
     gost_plots <- gost_output$go_plots
     invisible(lapply(names(gost_plots), function(x){
-      pdf(paste0(save_dir_plots, x, "GSE.pdf"))
+      pdf(file.path(save_dir_plots, paste0(x, "GSE.pdf")))
       gost_plots[[x]]
       dev.off()
     }))
@@ -1783,7 +1817,7 @@ save_gost <- function(gost_output, save_dir_plots, save_dir_text = NULL,
     save_dir_text %>%
       dir.create(showWarnings = F)
     write.csv(gost_text,
-              paste0(save_dir_text, "all_GSE_results.csv"))
+              file.path(save_dir_text, "all_GSE_results.csv"))
   }
   if(save_excel){
     # Create output directory
@@ -1805,8 +1839,8 @@ save_gost <- function(gost_output, save_dir_plots, save_dir_text = NULL,
       
       ## Save workbook to working directory
       saveWorkbook(gene_wb,
-                   file = paste0(save_dir_text, gost_query,
-                                 "GSE_results.xlsx"),
+                   file = file.path(save_dir_text, paste0(gost_query,
+                                 "GSE_results.xlsx")),
                    overwrite = TRUE)
     }))
   }
@@ -1838,7 +1872,7 @@ confusionMatrix <- function(i = NULL, j = NULL){
 
 # From SCENIC
 gene_filter_K <- function (exprMat, scenicOptions, minCountsPerGene = 3 * 0.01 * 
-                           ncol(exprMat), minSamples = ncol(exprMat) * 0.01) {
+                             ncol(exprMat), minSamples = ncol(exprMat) * 0.01) {
   outFile_genesKept <- NULL
   dbFilePath <- NULL
   if (class(scenicOptions) == "ScenicOptions") {
@@ -1927,10 +1961,10 @@ find_write_markers <- function(seurat_object, save_dir,
   
   Idents(seurat_object) <- meta_col
   marker_genes <- FindAllMarkers(seurat_object, assay = seurat_assay,
-                                     only.pos = TRUE)
-  write.csv(marker_genes, file = paste0(save_dir,
-                                            "files/DE/", assay, "_markers_",
-                                            meta_col, ".csv"))
+                                 only.pos = TRUE)
+  write.csv(marker_genes, file = file.path(save_dir, "files",
+                                        "DE", paste0(assay, "_markers_",
+                                        meta_col, ".csv")))
   
   # Create excel wb
   gene_wb <- createWorkbook()
@@ -1952,10 +1986,10 @@ find_write_markers <- function(seurat_object, save_dir,
                                           DE_p_cutoff = 0.05,
                                           DE_lfc_cutoff = 0.5,
                                           correction_method = "fdr")
-    write.csv(hypergeometric, file = paste0(save_dir,
-                                            "files/DE/", assay,
+    write.csv(hypergeometric, file = file.path(save_dir, "files",
+                                            "DE", paste0(assay,
                                             "_hypergeometric_",
-                                            meta_col, ".csv"))
+                                            meta_col, ".csv")))
     
     # Write to excel wb
     full_list <- lapply(unique(hypergeometric$cluster), function(x){
@@ -1970,9 +2004,9 @@ find_write_markers <- function(seurat_object, save_dir,
   
   ## Save workbook to working directory
   saveWorkbook(gene_wb,
-               file = paste0(save_dir,
-                             "files/DE/", assay, "_markers_",
-                             meta_col, ".xlsx"),
+               file = file.path(save_dir,
+                             "files", "DE", paste0(assay, "_markers_",
+                             meta_col, ".xlsx")),
                overwrite = TRUE)
   
   return(marker_genes)
@@ -1981,7 +2015,9 @@ find_write_markers <- function(seurat_object, save_dir,
 
 name_clusters <- function(seurat_object, ref_mat,
                           save_name, ADT = FALSE,
-                          nfeatures = 1000, clusters = "RNA_cluster"){
+                          assay = "RNA",
+                          nfeatures = 1000, clusters = "RNA_cluster",
+                          plot_type = "rna.umap"){
   
   # Keep only genes in seurat object
   ref_mat <- ref_mat[rownames(ref_mat) %in% rownames(seurat_object),]
@@ -2000,7 +2036,7 @@ name_clusters <- function(seurat_object, ref_mat,
   
   seurat_var <- FindVariableFeatures(
     seurat_object,
-    assay = "RNA",
+    assay = assay,
     selection.method = "vst",
     nfeatures = nfeatures
   )
@@ -2025,18 +2061,18 @@ name_clusters <- function(seurat_object, ref_mat,
   
   return_list$RNA <- seurat_res
   
-  pheatmap::pheatmap(seurat_res, color = viridis(10))
+  pheatmap::pheatmap(seurat_res, color = viridisLite::viridis(10))
   
   seurat_cluster <- cor_to_call(seurat_res)
   new_clusters <- seurat_cluster$type
   names(new_clusters) <- seurat_cluster$cluster
   
-  colname <- paste0("RNA_", save_name)
+  colname <- paste0(assay, "_", save_name)
   
-  seurat_object[[colname]] <- new_clusters[seurat_object$RNA_cluster]
+  seurat_object[[colname]] <- new_clusters[seurat_object[[clusters]][[1]]]
   
   plot1 <- plotDimRed(seurat_object, col_by = colname,
-                      plot_type = "rna.umap")
+                      plot_type = plot_type)
   if(ADT){
     plot2 <- plotDimRed(seurat_object, col_by = colname,
                         plot_type = "adt.umap")
@@ -2044,7 +2080,7 @@ name_clusters <- function(seurat_object, ref_mat,
                         plot_type = "wnn.umap")
   }
   
-  pdf(paste0(save_dir, "images/RNA_mapping_", save_name, ".pdf"))
+  pdf(file.path(save_dir, "images", paste0("RNA_mapping_", save_name, ".pdf")))
   print(plot1)
   if(ADT){
     print(plot2)
@@ -2081,13 +2117,14 @@ name_clusters <- function(seurat_object, ref_mat,
     seurat_object[[colname]] <- new_clusters[seurat_object$ADT_cluster]
     
     plot1 <- plotDimRed(seurat_object, col_by = colname,
-                        plot_type = "rna.umap")
+                        plot_type = plot_type)
     plot2 <- plotDimRed(seurat_object, col_by = colname,
                         plot_type = "adt.umap")
     plot3 <- plotDimRed(seurat_object, col_by = colname,
                         plot_type = "wnn.umap")
     
-    pdf(paste0(save_dir, "images/ADT_mapping_", save_name, ".pdf"))
+    pdf(file.path(save_dir, "images", paste0("ADT_mapping_",
+                                             save_name, ".pdf")))
     print(plot1)
     print(plot2)
     print(plot3)
@@ -2121,14 +2158,14 @@ name_clusters <- function(seurat_object, ref_mat,
     seurat_object[[colname]] <- new_clusters[seurat_object$combined_cluster]
     
     plot1 <- plotDimRed(seurat_object, col_by = colname,
-                        plot_type = "rna.umap")
+                        plot_type = plot_type)
     plot2 <- plotDimRed(seurat_object, col_by = colname,
                         plot_type = "adt.umap")
     plot3 <- plotDimRed(seurat_object, col_by = colname,
                         plot_type = "wnn.umap")
     
-    pdf(paste0(save_dir, "images/combined_mapping_", save_name,
-               ".pdf"))
+    pdf(file.path(save_dir, "images", paste0("combined_mapping_",
+                                             save_name, ".pdf")))
     print(plot1)
     print(plot2)
     print(plot3)
@@ -2138,4 +2175,21 @@ name_clusters <- function(seurat_object, ref_mat,
   return_list$object <- seurat_object
   
   return(return_list)
+}
+
+# Single cell spatial functions ------------------------------------------------
+create_spatial_seurat <- function(results_dir, sample_name,
+                                  filter_matrix = TRUE,
+                                  filename = "filtered_feature_bc_matrix.h5"){
+  results_path <- file.path(results_dir, sample_name, "outs")
+  image_path <- file.path(results_path, "spatial")
+  image_obj <- Read10X_Image(image.dir = image_path,
+                             filter.matrix = filter_matrix)
+  seurat_obj <- Load10X_Spatial(data.dir = results_path,
+                                filename = filename,
+                                filter.matrix = filter_matrix,
+                                to.upper = FALSE,
+                                image = image_obj)
+  seurat_obj$orig.ident <- sample_name
+  return(seurat_obj)
 }
