@@ -475,7 +475,7 @@ hypergeometric_test <- function(dds, gene_list, DE_table,
       representation <- x/expected_num
       
       # Calculate the p_val
-      p_val <- dhyper(x, m, n, k)
+      p_val <- sum(dhyper(x:k, m, n, k))
       
       return_df <- data.frame(comparison = comparison_name,
                               gene_list = list_name,

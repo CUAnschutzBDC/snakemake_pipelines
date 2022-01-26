@@ -996,7 +996,7 @@ hypergeometric_test <- function(seurat_object, gene_list, DE_table,
       representation <- x/expected_num
       
       # Calculate the p_val
-      p_val <- sum(dhyper(x, m, n, k))
+      p_val <- sum(dhyper(x:k, m, n, k))
       
       return_df <- data.frame(cluster = cluster_name,
                               gene_list = list_name,
