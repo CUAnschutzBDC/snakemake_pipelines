@@ -1,4 +1,5 @@
 # Single cell RNA-seq functions ------------------------------------------------
+# Added
 create_seurat_object <- function(sample, count_path, ADT = TRUE, hashtag = TRUE,
                                  min_features = 200, min_cells = 3,
                                  hashtag_idents = NULL){
@@ -40,6 +41,7 @@ create_seurat_object <- function(sample, count_path, ADT = TRUE, hashtag = TRUE,
   return(sample_object)
 }
 
+# Added
 PCA_dimRed <- function(sample_object, assay = "RNA",
                        reduction_name = NULL, vars_to_regress = NULL){
   if(assay == "RNA"){
@@ -78,6 +80,7 @@ PCA_dimRed <- function(sample_object, assay = "RNA",
   return(sample_object)
 }
 
+# Added
 plot_PCA <- function(sample_object, HTO = FALSE, assay = "RNA",
                      jackstraw = TRUE, reduction = NULL,
                      data_type = "RNA", ffpe = TRUE){
@@ -136,6 +139,7 @@ plot_PCA <- function(sample_object, HTO = FALSE, assay = "RNA",
   return(plots)
 }
 
+# Added
 group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
                         nPCs = 10, resolution = 0.8, assay = "RNA",
                         HTO = FALSE, reduction = NULL, ...){
@@ -267,41 +271,7 @@ group_cells <- function(sample_object, sample_name = NULL, save_dir = NULL,
               plots = plot_list))
 }
 
-#' Plot a group of dimensionality reductions
-#' 
-#' This function will plot a dimensionality reduction that exists in your seurat
-#' object (ex. UMAP or PCA). You can color the plot using any gene, adt (if they
-#' exist) or meta data column. You can also highlight just one group from an
-#' existing meta data column. This function will accept a vector in the col_by
-#' argument. These can be any combination of genes or meta data columns. If
-#' multiple options are given, a list of plots will be returned.
-#' @param sample_object A seurat object
-#' @param col_by What to color the plot by. May be a gene, adt, or column
-#' from the metadata. It can either be discrete or continuous. This can be a vector
-#' of selections (example c("cluster", "Ins1")). If a vector is given, the plots will
-#' be returned as a list in the order of the supplied vector.
-#' @param save_plot OPTIONAL A path to a file name if you want the plot saved. It
-#' will be saved as a PDF. If nothing is provided, the plot will be returned but not
-#' saved
-#' @param plot_type OPTIONAL The type of plot. The possible plots can be found in
-#' "reductions" in your seurat object. You can find these with names(object@reductions)
-#' Default is "umap". 
-#' @param dims_use OPTIONAL what dimensions to plot. Default is to plot dimensions 1 and 2
-#' @param highlight_group OPTIONAL if only some cells should be highlighted on the plot.
-#' when set to TRUE you must also set group and meta_data_col. When TRUE, the selected
-#' group will be colored and all other cells will be grey.
-#' @param meta_data_col The column in the seurat metadata (options can be found by calling
-#' colnames(object[[]])) used for coloring the desired group. For example, if you want to
-#' only highlight one cluster, meta_data_col = "cluster".
-#' @param group The group to color. This group must be present in the selected meta data 
-#' column.
-#' @param ... OPTIONAL arguments supplied to plotDimRedSingle
-#' @keywords umap, pca, dimensionality reduction
-#' @import tidyverse
-#' @import RColorBrewer
-#' @import viridis
-#' @export
-
+# Added
 plotDimRed <- function(sample_object, col_by, save_plot = NULL,
                        plot_type = "umap",
                        dims_use = NULL, highlight_group = FALSE,
@@ -320,39 +290,7 @@ plotDimRed <- function(sample_object, col_by, save_plot = NULL,
   return(plot_list)
 }
 
-#' Plot one dimensionality reduction
-#' 
-#' This function is meant to be called by plotDimRed and not used on it's own!!!
-#' This function will plot a dimensionality reduction that exists in your seurat
-#' object (ex. UMAP or PCA). You can color the plot using any gene, adt (if they
-#' exist) or meta data column. You can also highlight just one group from an
-#' existing meta data column.
-#' @param sample_object A seurat object
-#' @param col_by What to color the plot by. May be a gene, adt, or column
-#' from the metadata. It can either be discrete or continuous.
-#' @param plot_type OPTIONAL The type of plot. The possible plots can be found in
-#' "reductions" in your seurat object. You can find these with names(object@reductions)
-#' Default is "umap". 
-#' @param dims_use OPTIONAL what dimensions to plot. Default is to plot dimensions 1 and 2
-#' @param highlight_group OPTIONAL if only some cells should be highlighted on the plot.
-#' when set to TRUE you must also set group and meta_data_col. When TRUE, the selected
-#' group will be colored and all other cells will be grey.
-#' @param meta_data_col The column in the seurat metadata (options can be found by calling
-#' colnames(object[[]])) used for coloring the desired group. For example, if you want to
-#' only highlight one cluster, meta_data_col = "cluster".
-#' @param group OPTIONAL The group to color. This group must be present in the selected 
-#' meta data column.
-#' @param assasy OPTIONAL The assay to use to color the plot. This is mostly useful if
-#' you have the same names in your ADT and RNA slots so you can ensure you plot the
-#' correct one.
-#' @param ... OPTIONAL arguments supplied to groupDiscretePlots, groupContinuousPlots,
-#' discretePlots, or continuousPlots
-#' @keywords umap, pca, dimensionality reduction
-#' @import tidyverse
-#' @import RColorBrewer
-#' @import viridis
-#' @export
-
+# Added
 plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
                              dims_use = NULL, highlight_group = FALSE,
                              group = NULL, meta_data_col = "orig.ident",
@@ -447,30 +385,7 @@ plotDimRedSingle <- function(seurat_object, col_by, plot_type = "umap",
   return(return_plot)
 }
 
-#' Plot one dimensionality reduction colored by discrete data
-#' 
-#' This function is meant to be called by plotDimRed and not used on it's own!!!
-#' @param plot_df A dataframe created by plotDimRedSingle
-#' @param col_by What to color the plot by. May be a gene, adt, or column
-#' from the metadata. It can either be discrete or continuous.
-#' @param axis_names OPTIONAL What will be supplied to label the x and y axis
-#' @param color OPTIONAL what colors to use to color the plot. Default is Set1 from
-#' RColorBrewer
-#' @param show_legend OPTIONAL if a legend should be shown on the final plot. Deault is 
-#' TRUE
-#' @param size OPTIONAL The size of the points. Default is 0.25
-#' @param ggrastr OPTINAL If the plot should be rastarized. This is mostly helpful
-#' for large datasets. All of the points will be a png while the rest will still
-#' be editable. Default is FALSE (don't rasterize the plot)
-#' @param raster_scale OPTIONAL The scale to use. Can be helpful if the rasterized
-#' plot looks fuzzy. Default is 1
-#' @param raster_res OPTIONAL. Can be helpful to change if the rasterized plot
-#' looks fuzzy. Default is 300.
-#' @keywords umap, pca, dimensionality reduction
-#' @import tidyverse
-#' @import RColorBrewer
-#' @export
-
+# Added
 discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
                           color = NULL,show_legend = TRUE,
                           size = 0.25, ggrastr = FALSE,
@@ -510,30 +425,7 @@ discretePlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
 
 
 
-#' Plot one dimensionality reduction colored by continuous data
-#' 
-#' This function is meant to be called by plotDimRed and not used on it's own!!!
-#' @param plot_df A dataframe created by plotDimRedSingle
-#' @param col_by What to color the plot by. May be a gene, adt, or column
-#' from the metadata. It can either be discrete or continuous.
-#' @param axis_names OPTIONAL What will be supplied to label the x and y axis
-#' @param color OPTIONAL what colors to use to color the plot. Default is magma
-#' from viridis
-#' @param show_legend OPTIONAL if a legend should be shown on the final plot. Deault is 
-#' TRUE
-#' @param size OPTIONAL The size of the points. Default is 0.25
-#' @param ggrastr OPTINAL If the plot should be rastarized. This is mostly helpful
-#' for large datasets. All of the points will be a png while the rest will still
-#' be editable. Default is FALSE (don't rasterize the plot)
-#' @param raster_scale OPTIONAL The scale to use. Can be helpful if the rasterized
-#' plot looks fuzzy. Default is 1
-#' @param raster_res OPTIONAL. Can be helpful to change if the rasterized plot
-#' looks fuzzy. Default is 300.
-#' @keywords umap, pca, dimensionality reduction
-#' @import tidyverse
-#' @import viridis
-#' @export
-
+# Added
 continuousPlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
                             color = NULL, show_legend = TRUE,
                             size = 0.25, ggrastr = FALSE,
@@ -568,31 +460,7 @@ continuousPlots <- function(plot_df, col_by, axis_names = c("dim1", "dim2"),
   return(base_plot)
 }
 
-#' Plot one dimensionality reduction colored by discrete data
-#' 
-#' This function is meant to be called by plotDimRed and not used on it's own!!!
-#' @param plot_df A dataframe created by plotDimRedSingle
-#' @param group The group to color.
-#' @param col_by What to color the plot by. May be a gene, adt, or column
-#' from the metadata. It can either be discrete or continuous.
-#' @param axis_names OPTIONAL What will be supplied to label the x and y axis
-#' @param color OPTIONAL what colors to use to color the plot. Default is Set1
-#' from RColorBrewer
-#' @param show_legend OPTIONAL if a legend should be shown on the final plot. Deault is 
-#' TRUE
-#' @param size OPTIONAL The size of the points. Default is 0.25
-#' @param ggrastr OPTINAL If the plot should be rastarized. This is mostly helpful
-#' for large datasets. All of the points will be a png while the rest will still
-#' be editable. Default is FALSE (don't rasterize the plot)
-#' @param raster_scale OPTIONAL The scale to use. Can be helpful if the rasterized
-#' plot looks fuzzy. Default is 1
-#' @param raster_res OPTIONAL. Can be helpful to change if the rasterized plot
-#' looks fuzzy. Default is 300.
-#' @keywords umap, pca, dimensionality reduction
-#' @import tidyverse
-#' @import RColorBrewer
-#' @export
-
+# Added
 groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "dim2"),
                                color = NULL, show_legend = TRUE,
                                size = 0.25, ggrastr = FALSE,
@@ -656,31 +524,7 @@ groupDiscretePlots <- function(group, plot_df, col_by, axis_names = c("dim1", "d
   return(base_plot)
 }
 
-#' Plot one dimensionality reduction colored by continuous data
-#' 
-#' This function is meant to be called by plotDimRed and not used on it's own!!!
-#' @param plot_df A dataframe created by plotDimRedSingle
-#' @param group The group to color.
-#' @param col_by What to color the plot by. May be a gene, adt, or column
-#' from the metadata. It can either be discrete or continuous.
-#' @param axis_names OPTIONAL What will be supplied to label the x and y axis
-#' @param color OPTIONAL what colors to use to color the plot. Default is magma from
-#' viridis
-#' @param show_legend OPTIONAL if a legend should be shown on the final plot. Deault is 
-#' TRUE
-#' @param size OPTIONAL The size of the points. Default is 0.25
-#' @param ggrastr OPTINAL If the plot should be rastarized. This is mostly helpful
-#' for large datasets. All of the points will be a png while the rest will still
-#' be editable. Default is FALSE (don't rasterize the plot)
-#' @param raster_scale OPTIONAL The scale to use. Can be helpful if the rasterized
-#' plot looks fuzzy. Default is 1
-#' @param raster_res OPTIONAL. Can be helpful to change if the rasterized plot
-#' looks fuzzy. Default is 300.
-#' @keywords umap, pca, dimensionality reduction
-#' @import tidyverse
-#' @import viridis
-#' @export
-
+# Added
 groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
                                  limits = NULL, axis_names = c("dim1", "dim2"),
                                  save_plot = NULL, show_legend = TRUE,
@@ -747,46 +591,7 @@ groupContinuousPlots <- function(group, plot_df, col_by, color = NULL,
   return(base_plot)
 }
 
-#' Plot a group of violin or jitter plots
-#' 
-#' This function will plot a violin or jitter plot of the expression of a gene from
-#' your seurat object. The plot could also be of some continuous data from your
-#' meta data. The violin plot can be separated by any discrete variable in your
-#' meta data. If multiple genes are supplied, a single plot conisiting of all violin 
-#' or jitter plots will be returned with one plot per row.
-#' @param seurat_object A seurat object
-#' @param geneset What genes to use as the y axis in the plot. Can be many, but I
-#' recommend not going above 3 because all plots will be returned as one object.
-#' @param cell_cycle OPTIONAL Only an option if making a jitter plot. Can color each
-#' cel by the cell cycle phase. I originally did this so the colors would be consistent.
-#' Default is FALSE. If set to TRUE, it will override your col_by and color arguments.
-#' @param plot_type OPTIONAL The type of plot. The options are "violin", "jitter", or
-#' "both". "jitter" will make only a jitter plot, "violin" will make only a violin plot
-#' and "both" will make a violin plot with jitter dots overlayed on tope.
-#' @param col_by OPTIONAL what to use to color the cells (or violins). Generally for a violin
-#' plot this is the same as sep_by, but for jitter, it can be any discrete column from meta
-#' data. Default is NULL.
-#' @param sep_by OPTIONAL what to use to separate the jitter or violins on the x axis. 
-#' Can be any discrete value from the metadata. Deafult is "cluster"
-#' @param save_plot OPTIONAL A path to a file name if you want the plot saved. It
-#' will be saved as a PDF. If nothing is provided, the plot will be returned but not
-#' saved
-#' @param meta_data_col The column in the seurat metadata (options can be found by calling
-#' colnames(object[[]])) used for coloring the desired group. For example, if you want to
-#' only highlight one cluster, meta_data_col = "cluster".
-#' @param color The color palette used to color either the points for a jitter plot or
-#' the violins. Default is Set1 from RColorBrewer
-#' @param plot_median OPTIONAL if the median value should be included in the
-#' violin plot. Default is TRUE
-#' @param combine OPTIONAL if the final plots should be made into a figure or
-#' returned as a list. Default (TRUE) returns a figure.
-#' @param dodge OPTIONAL how to adjust the placement of the violin plot. Default is 1
-#' @param width OPTIONAL how to adjust how wide the violin plots are. Default is 0.9
-#' @keywords violin plot, jitter plot
-#' @import tidyverse
-#' @import RColorBrewer
-#' @export
-
+# Added
 featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
                          plot_type = "violin",
                          color = NULL, sep_by = "cluster",
@@ -845,20 +650,7 @@ featDistPlot <- function(seurat_object, geneset, cell_cycle = FALSE,
   }
 }
 
-#' Plot a jitter plot
-#' 
-#' This function is meant to be called by featDistPlot and not used on it's own!!!
-#' This function will plot a jitter plot.
-#' @param seurat_object A seurat object
-#' @param y_val What to use to create the y-axis
-#' @param x_val What to use to separate along the x-axis
-#' @param col_by OPTIONAL what to use to color the cells (or violins).
-#' @param color The color palette used to color. Default is Set1 from RColorBrewer
-#' @keywords violin plot, jitter plot
-#' @import tidyverse
-#' @import RColorBrewer
-#' @export
-
+# Added
 jitterPlot <- function(seurat_object, y_val, x_val,
                        col_by = NULL, color = NULL,
                        assay = NULL) {
@@ -898,25 +690,7 @@ jitterPlot <- function(seurat_object, y_val, x_val,
   return(plot_base)
 }  
 
-#' Plot a violin plot
-#' 
-#' This function is meant to be called by featDistPlot and not used on it's own!!!
-#' This function will plot a violin plot.
-#' @param seurat_object A seurat object
-#' @param y_val What to use to create the y-axis
-#' @param x_val What to use to separate along the x-axis
-#' @param col_by OPTIONAL what to use to color the cells (or violins).
-#' @param color OPTIONAL The color palette used to color. Default is Set1 from RColorBrewer
-#' @param plot_jitter OPTIONAL if a jitter plot should also be made. Default is FALSE.
-#' @param plot_median OPTIONAL if the median value should be included in the
-#' violin plot. Default is TRUE
-#' @param dodge OPTIONAL how to adjust the placement of the violin plot. Default is 1
-#' @param width OPTIONAL how to adjust how wide the violin plots are. Default is 0.9
-#' @keywords violin plot, jitter plot
-#' @import tidyverse
-#' @import RColorBrewer
-#' @export
-
+# Added
 violinPlot <- function(seurat_object, y_val, x_val,
                        col_by = NULL, color = NULL,
                        plot_jitter = FALSE,
@@ -968,18 +742,7 @@ violinPlot <- function(seurat_object, y_val, x_val,
   return(plot_base)
 }
 
-#' Make a dataframe
-#' 
-#' This function is meant to be called by featDistPlot and not used on it's own!!!
-#' This function will make a dataframe to pass to plotting functions
-#' @param seurat_object A seurat object
-#' @param y_val What to use to create the y-axis
-#' @param x_val What to use to separate along the x-axis
-#' @param col_by OPTIONAL what to use to color the cells (or violins).
-#' @keywords plots
-#' @import tidyverse
-#' @export
-
+# Added
 plotDF <- function(seurat_object, y_val, x_val,
                    col_by = NULL, assay = NULL) {
   # Add y_value to a data frame used for plotting. This value can be a gene
@@ -1044,43 +807,7 @@ plotDF <- function(seurat_object, y_val, x_val,
   return(plot_data)
 }
 
-#' Plot a heatmap
-#' 
-#' This function will plot a heatmap with annotations based on the metadata from a 
-#' supplied seurat object. The heatmap is colored by the blueYellow palette from
-#' the archR package.
-#' @param seurat_object A seurat object
-#' @param gene_list What genes to use in the heatmap. The function will take a long time
-#' and the heatmap will be huge if you use all genes.
-#' @param meta_col What column from the meta data should be used to annotate the x axis
-#' of the heatmap.
-#' @param colors OPTIONAL What colors should be used to annotate the x axis. Default is
-#' Set1 from RColorBrewer
-#' @param meta_df OPTIONAL If you want more complex annotations than just annotating by
-#' one column of the meta data, you can include your own meta_df here. If you use this
-#' option, you must include your own color list, where the names of the list match
-#' each column of your meta_df and the vector of colors in each item of the list match
-#' the number of items in the meta data column. Additionally, if you use this
-#' option, you must make sure that the cell names from the meta data match the cell names
-#' in your Seurat object. I've found that this is a particular issue when using average
-#' expression of clusters.
-#' @param color_list OPTIONAL only needs to be included when meta_df is set. This should be
-#' a list where the names of the list match each column of your meta_df and the vector of
-#' colors in each item of the list match the number of items in the meta data column.
-#' @param max_val OPTIONAL What value to cap the z-score shown. This makes it so highly
-#' variable genes don't completely controll the color scale. Default is 2.5
-#' @param min_val OPTIONAL What value to cap the z-score shown. This makes it so highly
-#' variable genes don't completely controll the color scale. Default is -2.5
-#' @param cluster_rows OPTIONAL if rows should be clustered. Default is FALSE
-#' @param cluster_columns OPTIONAL if columns should be clustered. Default is FALSE
-#' @param average_expression OPTIONAL if the average expression of clusters should be 
-#' computed before making the heatmap. This option makes much prettier plots, but
-#' can be a bit buggy, I'm still working on making it work more robustly.
-#' @keywords gene expression, heatmap
-#' @import tidyverse
-#' @import RColorBrewer
-#' @export
-
+# Added
 plot_heatmap <- function(seurat_object, gene_list, meta_col,
                          colors = NULL, meta_df = NULL, color_list = NULL,
                          max_val = 2.5, min_val = -2.5, cluster_rows = FALSE,
@@ -1181,6 +908,7 @@ plot_heatmap <- function(seurat_object, gene_list, meta_col,
   return(heatmap)
 }
 
+# Added
 stacked_barplots <- function(seurat_object, meta_col, color = NULL,
                              percent = TRUE, split_by = NULL,
                              return_values = FALSE){
@@ -1229,6 +957,7 @@ stacked_barplots <- function(seurat_object, meta_col, color = NULL,
   }
 }
 
+# Added
 hypergeometric_test <- function(seurat_object, gene_list, DE_table,
                                 DE_p_cutoff = 0.05, DE_lfc_cutoff = 0.5,
                                 correction_method = "fdr"){
@@ -1267,7 +996,7 @@ hypergeometric_test <- function(seurat_object, gene_list, DE_table,
       representation <- x/expected_num
       
       # Calculate the p_val
-      p_val <- dhyper(x, m, n, k)
+      p_val <- sum(dhyper(x:k, m, n, k))
       
       return_df <- data.frame(cluster = cluster_name,
                               gene_list = list_name,
@@ -1295,6 +1024,7 @@ hypergeometric_test <- function(seurat_object, gene_list, DE_table,
   return(full_hypergeometric)
 }
 
+# Added
 plot_hypergeom <- function(hypergeom_output, colors = NULL, meta_df = NULL,
                            color_list = NULL,
                            cluster_rows = FALSE, cluster_cols = FALSE,
@@ -1375,6 +1105,7 @@ plot_hypergeom <- function(hypergeom_output, colors = NULL, meta_df = NULL,
   return(heatmap)
 }
 
+# Not added - add to name clusters
 make_reference_w_plot <- function(marker_genes, cluster_num,
                                   cut_p_val = 0.05, ref_mat,
                                   group = NULL,
@@ -1437,7 +1168,7 @@ make_reference_w_plot <- function(marker_genes, cluster_num,
 }
 
 
-
+# Added
 # Basic function to convert human to mouse gene names
 convertHumanGeneList <- function(x, convert = "human_mouse"){
   
@@ -1467,29 +1198,7 @@ convertHumanGeneList <- function(x, convert = "human_mouse"){
   return(genesV2)
 }
 
-#' Run differential expression followed by pathview. Can also run pathview on 
-#' precomputed DE output
-#' 
-#' This function allows you to run pathview given a matrix of DE output
-#' @param path_id_list A named list of KEGG path ids. The ids are the 5 number
-#' ids, the name will be associated with the output file
-#' @param seurat_object OPTIONAL A seurat object that has already been
-#' normalized. Must provide either a seurat object or a seurat de.
-#' @param seurat_de OPTIONAL the returned object from find_markers. If not 
-#' provided, find markers will be run. Must provide either a seurat object or
-#' a seurat de.
-#' @param seurat_assay OPTIONAL which assay to pull the data from when
-#' performing DE. Default is "RNA"
-#' @param out_dir OPTIONAL an output directory for the pathview plots. Default
-#' it "pathview"
-#' @param pval OPTIONAL the pvalue cutoff for the adjusted pvalue from the DE
-#' test. Default is 0.05.
-#' @param ... OPTIONAL arguments supplied to find_markers
-#' @keywords pathview
-#' @import tidyverse
-#' @import pathview
-#' @export
-
+# Added
 de_to_pathview <- function(path_id_list, seurat_object = NULL,
                            seurat_de = NULL,
                            out_dir = "pathview",
@@ -1520,27 +1229,7 @@ de_to_pathview <- function(path_id_list, seurat_object = NULL,
   ))
 }
 
-#' Run differential expression 
-#' 
-#' This function runs differential expression analysis using Seurat's
-#' functions. This is called by several functions but can be used on
-#' its own as well.
-#' @param seurat_object A seurat object that has already been normalized.
-#' @param test_idents OPTIONAL The identities from the metadata used to perform
-#' DE. If no identities are provided, the identites already set in the object
-#' will be used.
-#' @param seurat_assay OPTIONAL which assay to pull the data from when
-#' performing DE. Default is "RNA"
-#' @param group OPTIONAL to be used when running DE between different samples.
-#' The group refers to the column contining the sample info. Default is NULL.
-#' @param group_ident_1 OPTIONAL The sample to use as the main sample to test
-#' against. Defaults to the first value of the factor
-#' @param group_ident_2 OPTIONAL which sample to use as the second group
-#' if more than 2 samples are in the seurat object.
-#' @keywords differential expression
-#' @import tidyverse
-#' @export
-
+# Added
 find_markers <- function(seurat_object,
                          test_idents = NULL, seurat_assay = "RNA",
                          group = NULL, group_ident_1 = NULL,
@@ -1571,26 +1260,7 @@ find_markers <- function(seurat_object,
   return(marker_genes_rna)
 }
 
-#' Run pathview on single cell data
-#' 
-#' This function allows you to run pathview given a matrix of DE output
-#' @param gene_matrix a matrix of log fold change values. Columns are samples
-#' and rownames are genes. Can include NA values. Must be in a matrix format.
-#' @param path_id the KEGG 5 number id for a pathway.
-#' @param path_name OPTIONAL the name of the KEGG pathway. This is used to
-#' name the output files. If this isn't set, output files are named based
-#' on the path id
-#' @param out_dir OPTIONAL the output directory to copy the files into. This
-#' directory will be created if it doesn't already exist. Default is "pathways"
-#' @param multi_state OPTIONAL if multiple samples are included should they
-#' all be plotted on the same output image. Default is FALSE
-#' @param gen_id OPTIONAL the species ID. Default is "mmu" for mouse. Set if 
-#' you aren't using mouse
-#' @keywords pathview
-#' @import tidyverse
-#' @import pathview
-#' @export
-
+# Added
 run_pathview <- function(gene_matrix, path_id, path_name = NULL,
                          out_dir = "pathways", multi_state = FALSE,
                          gen_id = "mmu"){
@@ -1641,24 +1311,7 @@ run_pathview <- function(gene_matrix, path_id, path_name = NULL,
   
 }
 
-#' Run differential expression followed by gost. Can also run gost on 
-#' precomputed DE output
-#' 
-#' This function allows you to run gost given a matrix of DE output or seurat
-#' object
-#' @param path_id_list A named list of KEGG path ids. The ids are the 5 number
-#' ids, the name will be associated with the output file
-#' @param seurat_object OPTIONAL A seurat object that has already been
-#' normalized. Must provide either a seurat object or a seurat de.
-#' @param sources OPTIONAL a list of what sources to plot. Can be any sources
-#' returned by gost. Default is GO:BP, KEGG, REAC and TF
-#' @param plot_colors OPTIONAL colors for the samples. Default is blue to red.
-#' #' @param intersection_cutoff OPTIONAL how many intersecting genes there must
-#' be to plot. Default is 5.
-#' @keywords gost
-#' @import tidyverse
-#' @export
-
+# Added
 run_gost <- function(seurat_de = NULL, seurat_object = NULL,
                      sources = c("GO:BP", "KEGG", "REAC", "TF"),
                      plot_colors = c("blue", "red"),
@@ -1697,21 +1350,7 @@ run_gost <- function(seurat_de = NULL, seurat_object = NULL,
   return(list(gost_output = gost_output, go_plots = go_plots))
 }
 
-#' Makes go plots of different terms after running gost. Can take many sources
-#' and will make plots for all queries in the gost return
-#' 
-#' This function makes plots based on different go terms after running gost. 
-#' This function is primarily meant to be called by other functions.
-#' @param gost_output the output from running gost.
-#' @param sources OPTIONAL a list of what sources to plot. Can be any sources
-#' returned by gost. Default is GO:BP, KEGG, REAC and TF
-#' @param plot_colors OPTIONAL colors for the samples. Default is blue to red.
-#' #' @param intersection_cutoff OPTIONAL how many intersecting genes there must
-#' be to plot. Default is 5.
-#' @keywords gost
-#' @import tidyverse
-#' @export
-
+# Added
 make_go_plots <- function(gost_output,
                           sources = c("GO:BP", "KEGG", "REAC", "TF"),
                           plot_colors = c("blue", "red"),
@@ -1732,20 +1371,7 @@ make_go_plots <- function(gost_output,
   return(all_plots)
 }
 
-#' Makes go plots of different terms for one DE test
-#' 
-#' This function makes plots based on different go terms after running gost. 
-#' This function is primarily meant to be called by other functions.
-#' @param gost_output the output from running gost.
-#' @param gost_query the name of the cell type or sample from DE to plot
-#' @param gost_source what source to plot. Can be any sources returned by gost
-#' @param plot_colors OPTIONAL colors for the samples. Default is blue to red.
-#' @param intersection_cutoff OPTIONAL how many intersecting genes there must
-#' be to plot. Default is 5.
-#' @keywords gost
-#' @import tidyverse
-#' @export
-
+# Added
 make_go_plot_single <- function(gost_output, gost_query, gost_source,
                                 plot_colors = c("blue", "red"),
                                 intersection_cutoff = 5){
@@ -1776,21 +1402,7 @@ make_go_plot_single <- function(gost_output, gost_query, gost_source,
   return(gost_plot)
 }
 
-#' Save output from running gost
-#' 
-#' This function saves both plots and text output from running gost
-#' @param gost_output the output from running run_gost function.
-#' @param save_dir_plots the directory to save the plots to
-#' @param save_dir_text OPTIONAL the directory to save the text to. If left
-#' NULL, will default to the same directory as the plots
-#' @param save_plots OPTIONAL if plots should be saved. Default is TRUE
-#' @param save_text OPTIONAL if text should be saved to a csv file. The whole
-#' gost output will be saved. Default is TRUE.
-#' @param save_excel OPTIONAL if an excel file should be created. A file will
-#' be created for each query and a tab will be inserted for each type of output.
-#' @keywords gost
-#' @import tidyverse
-#' @export
+# Added
 save_gost <- function(gost_output, save_dir_plots, save_dir_text = NULL,
                       save_plots = TRUE, save_text = TRUE, save_excel = TRUE){
   # Save plots
@@ -1846,7 +1458,7 @@ save_gost <- function(gost_output, save_dir_plots, save_dir_text = NULL,
   }
 }
 
-
+# Not added - don't include
 # Takes a legend from a ggplot object
 # Copied from https://gist.github.com/crsh/be88be19233f1df4542aca900501f0fb
 gglegend <- function(x){ 
@@ -1855,6 +1467,7 @@ gglegend <- function(x){
   tmp$grobs[[leg]]
 }
 
+# Added
 # Confusion matrix from Archr
 confusionMatrix <- function(i = NULL, j = NULL){
   ui <- unique(i)
@@ -1870,6 +1483,7 @@ confusionMatrix <- function(i = NULL, j = NULL){
   m
 }
 
+# Not added - don't include
 # From SCENIC
 gene_filter_K <- function (exprMat, scenicOptions, minCountsPerGene = 3 * 0.01 * 
                              ncol(exprMat), minSamples = ncol(exprMat) * 0.01) {
@@ -1928,6 +1542,7 @@ gene_filter_K <- function (exprMat, scenicOptions, minCountsPerGene = 3 * 0.01 *
   return(genesKept)
 }
 
+# Added
 pairwise_markers <- function(seurat_object, meta_col,
                              p_val_cutoff = 0.05, ...){
   Idents(seurat_object) <- meta_col
@@ -1951,6 +1566,7 @@ pairwise_markers <- function(seurat_object, meta_col,
   
 }
 
+# Added
 find_write_markers <- function(seurat_object, save_dir,
                                meta_col = "RNA_cluster",
                                assay = "RNA", pval = 0.05,
@@ -2012,13 +1628,20 @@ find_write_markers <- function(seurat_object, save_dir,
   return(marker_genes)
 }
 
-
-name_clusters <- function(seurat_object, ref_mat,
+# Added
+name_clusters <- function(seurat_object, ref_mat, save_dir,
                           save_name, ADT = FALSE,
                           assay = "RNA",
                           nfeatures = 1000, clusters = "RNA_cluster",
-                          plot_type = "rna.umap"){
+                          plot_type = "rna.umap",
+                          cor_cutoff = 0.5){
   
+  ifelse(!dir.exists(file.path(save_dir, "images")),
+         dir.create(file.path(save_dir, "images")), FALSE)
+
+  ifelse(!dir.exists(file.path(save_dir, "files")),
+         dir.create(file.path(save_dir, "files")), FALSE)
+
   # Keep only genes in seurat object
   ref_mat <- ref_mat[rownames(ref_mat) %in% rownames(seurat_object),]
   
@@ -2063,7 +1686,8 @@ name_clusters <- function(seurat_object, ref_mat,
   
   pheatmap::pheatmap(seurat_res, color = viridisLite::viridis(10))
   
-  seurat_cluster <- cor_to_call(seurat_res)
+  seurat_cluster <- cor_to_call(seurat_res) %>%
+    mutate(type = ifelse(r < cor_cutoff, "undetermined", type))
   new_clusters <- seurat_cluster$type
   names(new_clusters) <- seurat_cluster$cluster
   
@@ -2108,7 +1732,8 @@ name_clusters <- function(seurat_object, ref_mat,
     
     return_list$ADT <- seurat_res
     
-    seurat_cluster <- cor_to_call(seurat_res)
+    seurat_cluster <- cor_to_call(seurat_res) %>%
+      mutate(type = ifelse(r < cor_cutoff, "undetermined", type))
     new_clusters <- seurat_cluster$type
     names(new_clusters) <- seurat_cluster$cluster
     
@@ -2149,7 +1774,8 @@ name_clusters <- function(seurat_object, ref_mat,
     
     return_list$WNN <- seurat_res
     
-    seurat_cluster <- cor_to_call(seurat_res)
+    seurat_cluster <- cor_to_call(seurat_res) %>%
+      mutate(type = ifelse(r < cor_cutoff, "undetermined", type))
     new_clusters <- seurat_cluster$type
     names(new_clusters) <- seurat_cluster$cluster
     
@@ -2178,6 +1804,7 @@ name_clusters <- function(seurat_object, ref_mat,
 }
 
 # Single cell spatial functions ------------------------------------------------
+# Added
 create_spatial_seurat <- function(results_dir, sample_name,
                                   filter_matrix = TRUE,
                                   filename = "filtered_feature_bc_matrix.h5"){
