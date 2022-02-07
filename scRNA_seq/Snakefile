@@ -81,7 +81,8 @@ elif len(RAW_DATA) == 1:
 else:
     sys.exit("RAW_DATA must either be the same length of samples or length 1")
 
-RESULTS  = _check_path(RESULTS)
+if not os.path.exists(RESULTS):
+    os.makedirs(RESULTS)
 GENOME   = _check_path(GENOME)
 
 FASTQ_DIR = RESULTS + "/fastqs"
