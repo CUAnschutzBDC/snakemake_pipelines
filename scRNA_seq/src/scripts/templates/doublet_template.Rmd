@@ -1,0 +1,24 @@
+```{r echo = F}
+
+# Strings to match samples and create labels
+#gene <- "{{.x}}"
+sample <- "{{sample}}"
+sect_title <- sample
+
+if(!exists("extra_pound_doublet")){
+  extra_pound_doublet <- ""
+}
+
+sample_info <- sample_list[[sample]]
+
+```
+
+###`r extra_pound_doublet` **`r sect_title`**
+
+```{r {{sample}}-doublet, fig.height=4, fig.width=4}
+doublet_object <- readRDS(sample_info$seurat_doublet_path)
+
+plotDimRed(doublet_object,
+           col_by = "Doublet_finder",
+           plot_type = "rna.umap")[[1]]
+```

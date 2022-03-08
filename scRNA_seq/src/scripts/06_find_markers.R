@@ -1,23 +1,24 @@
-library(ggplot2)
 library(Seurat)
-library(tidyr)
+library(tidyverse)
 library(cowplot)
-library(dplyr)
 library(openxlsx)
+library(here)
+library(scAnalysisR)
 
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
 
-sample <- "sample"
-cell_types <- "combined_celltype"
-clusters <- "combined_cluster"
-
 normalization_method <- "log" # can be SCT or log
 
-HTO <- FALSE
-ADT <- FALSE # Set to true if you want to run DE on ADT (not enough ADT here)
+sample <- "sample"
+
+cell_types <- "RNA_celltype"
+clusters <- "RNA_cluster"
 pval <- 0.05
 logfc <- 0.5
+
+HTO <- FALSE
+ADT <- FALSE
 
 if(normalization_method == "SCT"){
   SCT <- TRUE
@@ -28,15 +29,10 @@ if(normalization_method == "SCT"){
 }
 
 # Set directories
-base_dir <- "path/to/base/dir"
-
-source(file.path(base_dir, "src", "scripts", "functions.R"))
+base_dir <- here()
 
 base_dir_proj <- file.path(base_dir, "results", sample)
-
 save_dir <- file.path(base_dir_proj, "R_analysis")
-
-gene_lists <- NULL
 
 # Read in the data
 seurat_data <- readRDS(file.path(save_dir, "rda_obj", "seurat_processed.rds"))
@@ -61,8 +57,11 @@ if(ADT){
 
 # RNA cluster DE ---------------------------------------------------------------
 
+seurat_data$cluster_celltype <- paste0(seurat_data[[clusters]][[1]], "_",
+                                       seurat_data[[cell_types]][[1]])
+
 marker_list <- find_write_markers(seurat_object = seurat_data,
-                                  meta_col = clusters,
+                                  meta_col = "cluster_celltype",
                                   pval = pval,
                                   logfc = logfc,
                                   assay = "RNA",
@@ -70,7 +69,7 @@ marker_list <- find_write_markers(seurat_object = seurat_data,
 
 if(ADT){
   marker_list <- find_write_markers(seurat_object = seurat_data,
-                                    meta_col = clusters,
+                                    meta_col = "cluster_celltype",
                                     pval = pval,
                                     logfc = logfc,
                                     assay = "ADT",
@@ -78,25 +77,29 @@ if(ADT){
 }
 
 
-# Activation -------------------------------------------------------------------
+# Tomato+ vs - -----------------------------------------------------------------
+plot(featDistPlot(seurat_data, geneset = "tdTomato", sep_by = "RNA_celltype"))
 
-marker_list <- find_write_markers(seurat_object = seurat_data,
-                                  meta_col = "activation",
+Idents(seurat_data) <- "RNA_celltype"
+seurat_alpha <- subset(seurat_data, idents = "beta")
+
+plot(featDistPlot(seurat_alpha, geneset = "tdTomato",
+                  sep_by = "RNA_cluster"))
+
+
+seurat_alpha$tdTomato_expr <- "negative"
+seurat_alpha$tdTomato_expr[GetAssayData(seurat_alpha, slot = "data")["tdTomato",]
+                           > 0.15] <- "positive"
+
+
+plot(featDistPlot(seurat_alpha, geneset = "tdTomato",
+                  sep_by = "tdTomato_expr"))
+
+marker_list <- find_write_markers(seurat_object = seurat_alpha,
+                                  meta_col = "tdTomato_expr",
                                   pval = pval,
                                   logfc = logfc,
                                   assay = "RNA",
                                   save_dir = save_dir)
-
-if(ADT){
-  marker_list <- find_write_markers(seurat_object = seurat_data,
-                                    meta_col = "activation",
-                                    pval = pval,
-                                    logfc = logfc,
-                                    assay = "ADT",
-                                    save_dir = save_dir)
-}
-
-seurat_data[[paste0(cell_types, sample)]] <- 
-  seurat_data[[cell_types]]
 
 saveRDS(seurat_data, file.path(save_dir, "rda_obj", "seurat_processed.rds"))

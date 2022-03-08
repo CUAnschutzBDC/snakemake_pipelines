@@ -1,0 +1,53 @@
+```{r echo = F}
+
+# Strings to match samples and create labels
+#gene <- "{{.x}}"
+sample <- "{{sample}}"
+sect_title <- sample
+
+if(!exists("extra_pound_celltype")){
+  extra_pound_celltype <- ""
+}
+
+sample_info <- sample_list[[sample]]
+
+```
+
+###`r extra_pound_celltype` **`r sect_title`**
+
+```{r {{sample}}-celltype, fig.height=8, fig.width=8}
+seurat_object <- sample_info$seurat_object
+
+if(sample_info$type == "single"){
+  plot1 <- plotDimRed(seurat_object, col_by = "RNA_cluster",
+           plot_type = "rna.umap")[[1]]
+  plot2 <- plotDimRed(seurat_object,
+                      col_by = "RNA_celltype", plot_type = "rna.umap",
+                      color = celltype_colors)[[1]]
+  barplot1 <- stacked_barplots(seurat_object = seurat_object,
+                               meta_col = "RNA_celltype",
+                               percent = TRUE,
+                               color = celltype_colors)
+  plot_grid(plot1, plot2, NULL, NULL, barplot1,
+            labels = c("A", "B", "", "", "D"),
+            align = "hv", axis = "lr",
+            nrow = 3, ncol = 2)
+} else {
+  plot1 <- plotDimRed(seurat_object, col_by = "uncorrected_cluster",
+           plot_type = "rna.umap")[[1]]
+  plot2 <- plotDimRed(seurat_object,
+                      col_by = c("RNA_celltype",
+                                 "RNA_combined_celltype"),
+                      plot_type = "rna.umap",
+                      color = celltype_colors)
+  barplot1 <- stacked_barplots(seurat_object = seurat_object,
+                               meta_col = "RNA_combined_celltype",
+                               percent = TRUE,
+                               color = celltype_colors,
+                               split_by = "sample")
+  plot_grid(plot1, plot2[[1]], plot2[[2]], NULL, barplot1,
+            labels = c("A", "B", "C", "", "D"),
+            align = "hv", axis = "lr",
+            nrow = 3, ncol = 2)
+}
+```

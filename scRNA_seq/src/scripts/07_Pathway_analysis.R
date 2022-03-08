@@ -6,6 +6,9 @@ library(dplyr)
 library(pathview)
 library(openxlsx)
 library(gprofiler2)
+library(scAnalysisR)
+library(here)
+
 
 pval <- 0.05
 logfc <- 0.5
@@ -13,7 +16,7 @@ logfc <- 0.5
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
 
-sample <- "E7_Run1"
+sample <- "sample"
 cell_types <- "combined_celltype"
 clusters <- "combined_cluster"
 
@@ -38,7 +41,7 @@ if(normalization_method == "SCT"){
 }
 
 # Set directories
-base_dir <- "path/to/base/dir"
+base_dir <- here()
 
 source(file.path(base_dir, "src", "scripts", "functions.R"))
 

@@ -83,7 +83,8 @@ else:
 
 if not os.path.exists(RESULTS):
     os.makedirs(RESULTS)
-GENOME   = _check_path(GENOME)
+RESULTS = _check_path(RESULTS)
+GENOME  = _check_path(GENOME)
 
 FASTQ_DIR = RESULTS + "/fastqs"
 if not os.path.exists(FASTQ_DIR):

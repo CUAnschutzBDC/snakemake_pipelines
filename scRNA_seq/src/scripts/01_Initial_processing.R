@@ -1,13 +1,15 @@
-library(ggplot2)
 library(Seurat)
-library(tidyr)
+library(tidyverse)
 library(cowplot)
-library(dplyr)
+library(here)
+library(scAnalysisR)
 
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
 
 normalization_method <- "log" # can be SCT or log
+
+sample <- "sample_name"
 
 if(normalization_method == "SCT"){
   SCT <- TRUE
@@ -17,25 +19,34 @@ if(normalization_method == "SCT"){
   seurat_assay <- "RNA"
 }
 
-ADT <- TRUE
-HTO <- TRUE
+ADT <- FALSE
+HTO <- FALSE
 
-vars.to.regress <- "percent.mt"
+vars.to.regress <- NULL
 
 # Set directories
-base_dir <- "path/to/base/dir"
+base_dir <- here()
 
-source(file.path(base_dir, "src", "scripts", "functions.R"))
+save_dir <- file.path(base_dir, "results", sample, "R_analysis")
 
-save_dir <- file.path(base_dir, "results", "R_analysis")
+# Make directories
+ifelse(!dir.exists(save_dir), dir.create(save_dir), FALSE)
 
-sample <- "sample"
+ifelse(!dir.exists(file.path(save_dir, "images")),
+       dir.create(file.path(save_dir, "images")), FALSE)
 
-mt_pattern <- "^MT-" # "^MT-" for human, "^mt-" for mice
+ifelse(!dir.exists(file.path(save_dir, "files")),
+       dir.create(file.path(save_dir, "files")), FALSE)
+
+ifelse(!dir.exists(file.path(save_dir, "rda_obj")),
+       dir.create(file.path(save_dir, "rda_obj")), FALSE)
+
+mt_pattern <- "^mt-" # "^MT-" for human, "^mt-" for mice
 
 # Create seurat object
 seurat_object <- create_seurat_object(sample = sample,
-                                      count_path = paste0(base_dir, "results"),
+                                      count_path = file.path(base_dir,
+                                                             "results"),
                                       ADT = ADT, hashtag = HTO
                                       )
 
@@ -58,15 +69,25 @@ if(ADT){
   adt_qual
 }
 dev.off()
+
+# Save before moving on
+saveRDS(seurat_object, file = file.path(save_dir, "rda_obj",
+                                        "seurat_unfilt.rds"))
+
 # Remove outliers
 if(ADT){
   seurat_object <- subset(x = seurat_object, subset = percent.mt < 10 &
-                          nFeature_RNA > 200 & nFeature_RNA < 6000 & 
+                          nFeature_RNA > 1000 & nFeature_RNA < 8500 & 
                           nCount_ADT < 10000)
 } else {
   seurat_object <- subset(x = seurat_object, subset = percent.mt < 10 &
-                          nFeature_RNA > 200 & nFeature_RNA < 6000)
+                          nFeature_RNA > 500 & nFeature_RNA < 8000)
 }
+
+# Quality plots to check cutoffs
+rna_qual <- VlnPlot(seurat_object,
+                    features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                    ncol = 3)
 
 # Normalization
 # Single Cell Transform normalization
@@ -101,4 +122,5 @@ if(HTO){
   dev.off()
 }
 
-saveRDS(seurat_object, file = file.path(save_dir, "seurat_start.rds"))
+saveRDS(seurat_object, file = file.path(save_dir, "rda_obj",
+                                        "seurat_start.rds"))

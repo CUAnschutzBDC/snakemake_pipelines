@@ -1,15 +1,16 @@
 library(Seurat)
 library(dsb)
 library(tidyverse)
+library(here)
+library(scAnalysisR)
+
 
 sample <- "sample"
 
 HTO <- TRUE
 
 # Set directories
-base_dir <- "path/to/base/dir"
-
-source(file.path(base_dir, "src", "scripts", "functions.R"))
+base_dir <- here()
 
 base_dir_proj <- file.path(base_dir, "results", sample)
 

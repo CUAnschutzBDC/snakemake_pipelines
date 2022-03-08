@@ -1,0 +1,85 @@
+```{r echo = F}
+
+# Strings to match samples and create labels
+#gene <- "{{.x}}"
+subset <- "{{subset}}"
+gene <- "{{gene}}"
+if(subset){
+  sample <- "{{sample}}"
+
+  # Create section title
+  sect_title <- sample
+  highlight <- "for only the highlighted sample"
+  b_text <- "B) Plot of gene expression for only the highlighted sample"
+  sep_2 <- sep_1
+} else {
+  gene <- "{{gene}}"
+  sect_title <- gene
+  highlight <- "in all cells"
+  b_text <- ""
+
+}
+
+if(!exists("extra_pound_gene")){
+  extra_pound_gene <- ""
+}
+
+
+```
+
+###`r extra_pound_gene` **`r sect_title`**
+Plots of gene expression
+
+A) Plot of gene expression on single cell UMAP
+`r b_text`
+C) Plot of `r sep_1` in all cells
+D) Violin plot of `r sep_1` in all cells
+E) Plot of `r sep_2` `r highlight`
+F) Violin plot of `r sep_2` `r highlight`
+```{r gene-plot-{{sample}}-{{group}}-{{gene}}, fig.width=10, fig.height=10, message=F, echo=F, results = "hide"}
+DefaultAssay(merged_seurat) <- assay
+violin1 <- featDistPlot(merged_seurat, gene, sep_by = sep_1,
+                        col_by = violin_col_by_1, color = colors_1,
+                        assay = assay)
+                      
+
+umap1 <- plotDimRed(merged_seurat, col_by = gene, plot_type = plot_type,
+                    assay = assay)[[1]]
+
+umap3 <- plotDimRed(merged_seurat, col_by = sep_1,
+                    plot_type = plot_type, color = umap_cols_1)[[1]]
+
+if(subset){
+  seurat_sub <- subset(merged_seurat, idents = sample)
+  umap2 <- plotDimRed(merged_seurat, col_by = gene, plot_type = plot_type,
+                      highlight_group = TRUE, meta_data_col = meta_data_col,
+                      group = sample, assay = assay)[[1]]
+  umap4 <- plotDimRed(merged_seurat, col_by = sep_1,
+                      plot_type = plot_type, color = umap_cols_1,
+                      highlight_group = TRUE, meta_data_col = meta_data_col,
+                      group = sample)[[1]]
+
+  violin2 <- featDistPlot(seurat_sub, gene, sep_by = sep_1,
+                          col_by = violin_col_by_1, color = colors_1,
+                          assay = assay)
+  text_labels <- c("A", "B", "C", "D", "E", "F")
+} else {
+  umap2 <- NULL
+  umap4 <- plotDimRed(merged_seurat, col_by = sep_2,
+                      plot_type = plot_type, color = umap_cols_2)[[1]]
+  violin2 <- featDistPlot(merged_seurat, gene, sep_by = sep_2,
+                          col_by = violin_col_by_2, color = colors_2,
+                          assay = assay)
+  text_labels <- c("A", "", "B", "C", "D", "E")
+}
+
+
+plot_grid(umap1, umap2,
+          umap3, violin1,
+          umap4, violin2,
+          labels = text_labels,
+          nrow = 3,
+          ncol = 2,
+          align = "hv",
+          axis = "l")
+```

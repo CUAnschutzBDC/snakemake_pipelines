@@ -1,0 +1,328 @@
+---
+title: "Description of analysis"
+author: "Kristen Wells"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    highlight: "tango"
+    df_print: "paged"
+    code_folding: "hide"
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  message = F, 
+  warning = F,
+  comment = ""
+)
+library(here)
+
+knitr::opts_knit$set(root.dir = here())
+```
+
+# Summary
+
+```{r, include = FALSE}
+library(Seurat)
+library(tidyverse)
+library(cowplot)
+library(here)
+library(scAnalysisR)
+library(knitr)
+library(LaCroixColoR)
+
+# Set theme
+ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
+
+# Sample information that also includes if it is combined or not
+samples <- list("AT01" = c("single"),
+             "AT02" = c("single"),
+             "AT_combined" = c("combined"))
+
+# Set directories
+base_dir <- here()
+
+# Change to be the cell types of the analysis
+# colors from https://medialab.github.io/iwanthue/
+celltype_colors <- c("alpha" = "#AB813B",
+                     "beta" = "#6C81D9",
+                     "delta" = "#AFAA3C",
+                     "ductal" = "#5C3788",
+                     "endothelial" = "#56AE6C",
+                     "macrophage" = "#C26ABB",
+                     "quiescent_stellate" = "#BB4D3E",
+                     "PP" = "#B94973")
+
+# Change to be the samples of the analysis
+sample_colors <- LaCroixColoR::lacroix_palette("Coconut", 3)
+sample_colors <- sample_colors[1:2]
+names(sample_colors) <- c("AT01", "AT02")
+
+# Read in all data
+sample_list <- lapply(names(samples), function(x){
+  base_dir_proj <- file.path(base_dir, "results", x)
+  save_dir <- file.path(base_dir_proj, "R_analysis")
+  seurat_data <- readRDS(file.path(save_dir, "rda_obj", "seurat_processed.rds"))
+  unprocessed_path <- file.path(save_dir, "rda_obj", "seurat_unfilt.rds")
+  doublet_path <- file.path(save_dir, "rda_obj", "seurat_doublet.rds")
+  
+  nColors <- length(unique(seurat_data$cluster_celltype))
+  cluster_colors <- grDevices::colorRampPalette(
+    RColorBrewer::brewer.pal(9, "Set1"))(nColors)
+   names(cluster_colors) <- unique(seurat_data$cluster_celltype)
+
+  return_data <- list("seurat_object" = seurat_data,
+                      "seurat_unprocessed_path" = unprocessed_path,
+                      "seurat_doublet_path" = doublet_path,
+                      "type" = samples[[x]][1],
+                      "cluster_colors" = cluster_colors,
+                      "save_dir" = save_dir)
+  
+})
+
+names(sample_list) <- names(samples)
+
+```
+
+## Quality control {.tabset}
+I first check the quality of all samples by looking at the number of reads per cell, the number of features (genes) per cell, and the percent mitochondrial genes per cell. In cases where the cells were dying, we generally see a higher percent mitochondria. I like to see that most cells have less than 15% of reads mapping to mitochondrial reads.
+
+Here it seems that most cells look pretty good. You have ~4,000-5,000 genes per cell which is amazing. I normally see closer to 3,000 genes per cell. There are definitely some cells with a really high mitochondiral percent. I filter these cells out before continuing. In general, there were fewer AT02 cells that were filtered out because of quality concerns.
+
+My filters
+
+* AT01
+  * percent.mt < 10 (all cells with more thant 10% mitochondiral reads are filtered out)
+  * nFeature_RNA > 500 (any cells with less than 500 genes were excluded, it seems like you had a big population of cells with few genes, I suspect they are low quality so I removed them)
+  * nFeature_RNA < 8000 (there were a handful of cells with many features. These are generally removed as they are suspected to be doublets)
+* AT02
+  * percent.mt < 10 (all cells with more thant 10% mitochondiral reads are filtered out)
+  * nFeature_RNA > 500 (any cells with less than 500 genes were excluded, it seems like you had a big population of cells with few genes, I suspect they are low quality so I removed them)
+  * nFeature_RNA < 9000 (there were a handful of cells with many features. These are generally removed as they are suspected to be doublets)
+
+```{r "plot-quality", echo = F}
+quality_template <- file.path(here(),
+                              "src/scripts/templates/quality_template.Rmd")
+
+quality_chunks <- names(sample_list) %>%
+  map(~knit_expand(file = quality_template, sample = .x))
+```
+
+`r knit_child(text = quality_chunks)`
+
+## Doublet Removal {.tabset}
+I next identify likely doublets using `DoubletFinder` which attempts to model what doublets would look like based on a mixing of the different clusters. The doublets identified are shown below. I filter these out before continuing the analysis.
+
+```{r "plot-doublet", echo = F}
+
+doublet_template <- file.path(here(),
+                              "src/scripts/templates/doublet_template.Rmd")
+
+sample_doublet <- samples[samples == "single"]
+
+doublet_chunks <- names(sample_doublet) %>%
+  map(~knit_expand(file = doublet_template, sample = .x))
+```
+
+`r knit_child(text = doublet_chunks)`
+
+## PCA {.tabset}
+I next do an initial dimensional reduction with using PCA on the top 2000 variable genes. The PCA is not too informative, but it's worth looking at a few metrics.
+
+A) The sample - notice in the combined plot that the samples seem to align pretty well, but there are a few places where we mostly see cells from one sample
+B) The number of UMIs seen in each cell. There is some correlation between this and PC1 so we will need to make sure this isn't captured when we make a UMAP.
+C) The number of genes seen in each cell. Again, there is some correlation between this and PC1 so we will need to make sure this isn't captured when we make a UMAP.
+D) The percent mitochondrial reads per cell. We don't want to see much correlation between this and either of the PCs.
+```{r "plot-pca", echo = F}
+
+pca_template <- file.path(here(),
+                          "src/scripts/templates/pca_template.Rmd")
+
+pca_chunks <- names(sample_list) %>%
+  map(~knit_expand(file = pca_template, sample = .x))
+```
+
+`r knit_child(text = pca_chunks)`
+
+## UMAP {.tabset}
+
+I next follow the PCA with a UMAP dimensional reduction. Rather than use genes for UMAP, we use the top PCs (~30 for all of these samples). I'll plot the same metrics for UMAP as for the PCA.
+
+A) The sample - notice in the combined plot that the samples seem to align pretty well in some clusters but poorly in others. I'm not yet certain if batch correction is needed. We can discuss this. It will also be more obvious when we have your replicates
+B) The number of UMIs seen in each cell. There is some correlation between this and the UMAP. It could be technical or cell type specific. We can decided this based on the gene expression patterns.
+C) The number of genes seen in each cell. Again, there is some correlation between this and the UMAP. It could be technical or cell type specific. We can decided this based on the gene expression patterns.
+D) The percent mitochondrial reads per cell. There isn't much correlation here which is a good sign.
+```{r "plot-umap", echo = F}
+
+umap_template <- file.path(here(),
+                           "src/scripts/templates/umap_template.Rmd")
+
+umap_chunks <- names(sample_list) %>%
+  map(~knit_expand(file = umap_template, sample = .x))
+```
+
+`r knit_child(text = umap_chunks)`
+
+## Celltypes {.tabset}
+I named celltypes based using `clustifyr` which uses a reference dataset to name clusters. First, average expression is found for each cluster in the reference dataset, then a correlation is run between the reference cluster and our clusters. I used [A Single-Cell Transcriptomic Map of the Human and Mouse Pancreas Reveals Inter- and Intra-cell Population Structure](https://www.sciencedirect.com/science/article/pii/S2405471216302666?via%3Dihub) as the reference. Generally, it did a pretty good job naming clusters. The reference didn't include PP cells, so I manually named that cluster based on the expression of Ppy.
+
+A) UMAP colored by clusters
+B) UMAP colored by cell type defined within each individual sample
+C) UMAP colored by cell type defined when the samples are combined (fortunately B and C look very similar)
+D) Barplot showing the percent of cells that were assigned to each cell type. 
+
+```{r "plot-celltype", echo = F}
+
+celltype_template <- file.path(here(),
+                           "src/scripts/templates/celltype_template.Rmd")
+
+celltype_chunks <- names(sample_list) %>%
+  map(~knit_expand(file = celltype_template, sample = .x))
+```
+
+`r knit_child(text = celltype_chunks)`
+
+## Gene expression of hormones {.tabset}
+```{r "plot-genes", echo = F}
+
+all_gene_template <- file.path(here(),
+                           "src/scripts/templates/all_gene_template.Rmd")
+
+genes <- c("Ins1", "Ins2", "Gcg", "Sst", "Ppy", "Nkx6-1", "Nkx2-2",
+           "Mafa", "Mafb", "tdTomato")
+
+all_gene_chunks <- names(sample_list) %>%
+  map(~knit_expand(file = all_gene_template, sample = .x))
+```
+
+`r knit_child(text = all_gene_chunks)`
+
+
+
+## Heatmaps of marker genes {.tabset}
+I'm now going to transition to just showing the combined samples, but let me know if you want any of these plots for the two samples individually.
+
+### **Cell types**
+1. Left, expression of DE genes in cell types. I've colored the x axis by both the cell type and the sample so you can compare.
+2. Right, expression of DE genes in cell types averaged within each cell type. I've colored bye x axis by both the cell type and the sample so you can compare.
+```{r cell-type-heatmap, fig.height=8, fig.width=12}
+sample_info <- sample_list[["AT_combined"]]
+seurat_data <- sample_info$seurat_object
+save_dir <- sample_info$save_dir
+
+# Get marker genes that are saved
+marker_genes_rna <- read.csv(file.path(save_dir,
+                                    "files/rna_markers_cell_type.csv"),
+                             row.names = 1)
+
+seurat_data$celltype_sample <- paste0(seurat_data$RNA_combined_celltype, "_",
+                                      seurat_data$sample)
+
+seurat_data$celltype_sample <- factor(seurat_data$celltype_sample)
+
+meta_df <- data.frame(celltype_sample = seurat_data$celltype_sample,
+                      sample = seurat_data$sample,
+                      RNA_combined_celltype = seurat_data$RNA_combined_celltype)
+
+color_list <- list(sample = sample_colors,
+                   RNA_combined_celltype = celltype_colors)
+
+# Pick out the top 10 makers of each cluster
+top10_rna <- marker_genes_rna %>% 
+  dplyr::group_by(cluster) %>% 
+  dplyr::top_n(n = 10, wt = avg_log2FC) %>%
+  dplyr::arrange(cluster)
+
+# Make a heatmap with these genes
+rna_heatmap <- plot_heatmap(seurat_data, top10_rna$gene, "celltype_sample",
+                            color_list = color_list,
+                            meta_df = meta_df,
+                            plot_meta_col = FALSE)[[4]]
+
+average_meta <- data.frame(celltype_sample = levels(meta_df$celltype_sample))
+average_meta$sample <- gsub(".*_", "", average_meta$celltype_sample)
+average_meta$RNA_combined_celltype <- gsub("_AT.*", "",
+                                           average_meta$celltype_sample)
+
+rownames(average_meta) <- average_meta$celltype_sample
+average_meta$celltype_sample <- factor(average_meta$celltype_sample)
+average_meta$RNA_combined_celltype <- factor(average_meta$RNA_combined_celltype)
+average_meta$sample <- factor(average_meta$sample)
+# Make a heatmap using the average values from each cluster
+rna_heatmap_ave <- plot_heatmap(seurat_data, top10_rna$gene, "celltype_sample",
+                                color_list = color_list,
+                                meta_df = average_meta,
+                                plot_meta_col = FALSE,
+                                average_expression = TRUE)[[4]]
+
+
+plot_grid(rna_heatmap, rna_heatmap_ave,
+          nrow = 1, ncol = 2,
+          align = "hv",
+          axis = "tb")
+```
+
+### **Clusters**
+1. Left, expression of DE genes in clusters. I've colored the x axis by both the cluster and the sample so you can compare.
+2. Right, expression of DE genes in clusters averaged within each cluster. I've colored bye x axis by both the cluster and the sample so you can compare.
+```{r cluster-heatmap, fig.height=20, fig.width=12}
+sample_info <- sample_list[["AT_combined"]]
+seurat_data <- sample_info$seurat_object
+save_dir <- sample_info$save_dir
+cluster_colors <- sample_info$cluster_colors
+
+# Get marker genes that are saved
+marker_genes_rna <- read.csv(file.path(save_dir,
+                                    "files/rna_markers_gene_clusters.csv"),
+                             row.names = 1)
+
+seurat_data$cluster_sample <- paste0(seurat_data$cluster_celltype, "_",
+                                      seurat_data$sample)
+
+seurat_data$cluster_sample <- factor(seurat_data$cluster_sample)
+
+meta_df <- data.frame(cluster_sample = seurat_data$cluster_sample,
+                      sample = seurat_data$sample,
+                      cluster_celltype = seurat_data$cluster_celltype)
+
+color_list <- list(sample = sample_colors,
+                   cluster_celltype = cluster_colors)
+
+# Pick out the top 10 makers of each cluster
+top10_rna <- marker_genes_rna %>% 
+  dplyr::group_by(cluster) %>% 
+  dplyr::top_n(n = 10, wt = avg_log2FC) %>%
+  dplyr::arrange(cluster)
+
+# Make a heatmap with these genes
+rna_heatmap <- plot_heatmap(seurat_data, top10_rna$gene, "cluster_sample",
+                            color_list = color_list,
+                            meta_df = meta_df,
+                            plot_meta_col = FALSE)[[4]]
+
+average_meta <- data.frame(cluster_sample = levels(meta_df$cluster_sample))
+average_meta$sample <- gsub(".*_", "", average_meta$cluster_sample)
+average_meta$cluster_celltype <- gsub("_AT.*", "",
+                                           average_meta$cluster_sample)
+
+rownames(average_meta) <- paste0("X", average_meta$cluster_sample)
+average_meta$cluster_sample <- factor(average_meta$cluster_sample)
+average_meta$cluster_celltype <- factor(average_meta$cluster_celltype)
+average_meta$sample <- factor(average_meta$sample)
+# Make a heatmap using the average values from each cluster
+rna_heatmap_ave <- plot_heatmap(seurat_data, top10_rna$gene, "cluster_sample",
+                                color_list = color_list,
+                                meta_df = average_meta,
+                                plot_meta_col = FALSE,
+                                average_expression = TRUE)[[4]]
+
+
+plot_grid(rna_heatmap, rna_heatmap_ave,
+          nrow = 1, ncol = 2,
+          align = "hv",
+          axis = "tb")
+```

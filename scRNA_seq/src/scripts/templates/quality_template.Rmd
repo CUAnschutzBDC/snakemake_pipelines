@@ -1,0 +1,29 @@
+```{r echo = F}
+
+# Strings to match samples and create labels
+#gene <- "{{.x}}"
+sample <- "{{sample}}"
+sect_title <- sample
+
+if(!exists("extra_pound_quality")){
+  extra_pound_quality <- ""
+}
+
+sample_info <- sample_list[[sample]]
+
+```
+
+###`r extra_pound_quality` **`r sect_title`**
+
+```{r {{sample}}-quality, fig.height=4, fig.width=6}
+if(sample_info$type == "single"){
+  unprocessed_object <- readRDS(sample_info$seurat_unprocessed_path)
+} else {
+  unprocessed_object <- sample_info$seurat_object
+}
+Idents(unprocessed_object) <- "orig.ident"
+rna_qual <- VlnPlot(unprocessed_object,
+                    features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                    ncol = 3)
+rna_qual
+```

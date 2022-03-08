@@ -1,20 +1,21 @@
-library(ggplot2)
 library(Seurat)
 library(tidyverse)
 library(cowplot)
 library(harmony)
+library(here)
+library(scAnalysisR)
 
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
+
+normalization_method <- "log" # can be SCT or log
 
 sample <- "sample"
 
 vars.to.regress <- NULL
 
-normalization_method <- "log" # can be SCT or log
-
-HTO <- TRUE
-ADT <- TRUE
+HTO <- FALSE
+ADT <- FALSE
 
 if(normalization_method == "SCT"){
   SCT <- TRUE
@@ -24,16 +25,11 @@ if(normalization_method == "SCT"){
   seurat_assay <- "RNA"
 }
 
-
 # Set directories
-base_dir <- "path/to/base/dir"
-
-source(file.path(base_dir, "src", "scripts", "functions.R"))
+base_dir <- here()
 
 base_dir_proj <- file.path(base_dir, "results", sample)
-
 save_dir <- file.path(base_dir_proj, "R_analysis")
-
 
 # Read in the data
 seurat_data <- readRDS(file.path(save_dir, "rda_obj", "seurat_doublet.rds"))
@@ -87,7 +83,7 @@ if(ADT){
 #                              plot_type = "harmony")
 
 # UMAP -------------------------------------------------------------------------
-RNA_pcs <- 30
+RNA_pcs <- 28
 ADT_pcs <- 8
 
 set.seed(0)
@@ -99,10 +95,11 @@ seurat_data <- umap_data$object
 
 gene_plots <- umap_data$plots
 
-plotDimRed(seurat_data, col_by = "CD4", plot_type = "rna.umap")
-plotDimRed(seurat_data, col_by = "CD8A", plot_type = "rna.umap")
-plotDimRed(seurat_data, col_by = "CD4-A0072", plot_type = "rna.umap")
-plotDimRed(seurat_data, col_by = "CD8-A0046", plot_type = "rna.umap")
+plotDimRed(seurat_data, col_by = "Ins1", plot_type = "rna.umap")
+plotDimRed(seurat_data, col_by = "Ins2", plot_type = "rna.umap")
+plotDimRed(seurat_data, col_by = "Gcg", plot_type = "rna.umap")
+plotDimRed(seurat_data, col_by = "Sst", plot_type = "rna.umap")
+plotDimRed(seurat_data, col_by = "tdTomato", plot_type = "rna.umap")
 
 if(ADT){
   # UMAP of surface protein
