@@ -11,9 +11,9 @@ set -o nounset -o pipefail -o errexit -x
 # Load modules
 # Use locally installed packages for Majiq
 module load fastqc/0.11.7
-module load samtools/1.5
-module load STAR/2.5.2a
-module load subread
+module load samtools/1.12
+module load STAR/2.7.9a
+module load subread/1.6.2
 module load bbtools/38.86
 
 # LSF arguments

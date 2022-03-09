@@ -53,6 +53,8 @@ SAMPLES = [x.strip() for x in SAMPLES]
 
 
 # Check/set directory/file paths
+if not os.path.exists(RESULTS):
+    os.makedirs(RESULTS)
 RESULTS  = _check_path(RESULTS)
 GENOME   = _check_path(GENOME)
 
