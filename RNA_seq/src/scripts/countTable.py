@@ -19,7 +19,7 @@ for i in file_list:
 	with open(i, "r") as countFile:
 		for line in countFile:
 			line = line.strip().split("\t")
-			if "ENSMUSG" in line[0]:
+			if "ENS" in line[0]:
 				ens_id = line[0]
 				gene = line[6]
 				count = line[8]
