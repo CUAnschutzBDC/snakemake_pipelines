@@ -22,3 +22,16 @@ plotDimRed(doublet_object,
            col_by = "Doublet_finder",
            plot_type = "rna.umap")[[1]]
 ```
+
+```{r}
+final_object <- sample_info$seurat_object
+median_counts <- median(final_object$nCount_RNA)
+median_features <- median(final_object$nFeature_RNA)
+cell_number <- nrow(final_object[[]])
+```
+
+####`r extra_pound_doublet` Metrics
+
+* The median counts per cell after all filtering is `r median_counts`
+* The median genes per cell after all filtering is `r median_features`
+* The total number of cells after all filtering is `r cell_number`
