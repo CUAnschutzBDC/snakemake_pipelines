@@ -43,6 +43,8 @@ samples <- list("AT01" = c("single"),
              "AT02" = c("single"),
              "AT_combined" = c("combined"))
 
+ADT <- FALSE
+
 # Set directories
 base_dir <- here()
 
@@ -105,8 +107,13 @@ My filters
   * nFeature_RNA < 9000 (there were a handful of cells with many features. These are generally removed as they are suspected to be doublets)
 
 ```{r "plot-quality", echo = F}
+if(ADT){
+  quality_template <- file.path(here(),
+                              "src/scripts/templates/quality_template_ADT.Rmd")
+} else{
 quality_template <- file.path(here(),
-                              "src/scripts/templates/quality_template.Rmd")
+                              "src/scripts/templates/quality_template.Rmd")  
+}
 
 quality_chunks <- names(sample_list) %>%
   map(~knit_expand(file = quality_template, sample = .x))
