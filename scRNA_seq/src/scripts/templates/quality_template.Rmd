@@ -21,9 +21,22 @@ if(sample_info$type == "single"){
 } else {
   unprocessed_object <- sample_info$seurat_object
 }
+
 Idents(unprocessed_object) <- "orig.ident"
 rna_qual <- VlnPlot(unprocessed_object,
                     features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
                     ncol = 3)
 rna_qual
 ```
+
+```{r}
+median_counts <- median(unprocessed_object$nCount_RNA)
+median_features <- median(unprocessed_object$nFeature_RNA)
+cell_number <- nrow(unprocessed_object[[]])
+```
+
+####`r extra_pound_quality` Metrics
+
+* The median counts per cell is `r median_counts`
+* The median genes per cell is `r median_features`
+* The total number of cells before filtering is `r cell_number`
