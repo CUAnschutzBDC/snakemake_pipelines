@@ -122,6 +122,21 @@ make_heatmap <- function(dds, vsd, de_genes, treatment, control, group,
   } else {
     stop("de_genes must be a S4 output from DESeq2 (res$DE_genes) or a list of genes")
   }
+
+  # Only keep genes in the object
+  throw_out_genes <- de_genes[!de_genes %in% rownames(dds)]
+  
+  de_genes <- de_genes[de_genes %in% rownames(dds)]
+  
+  if(length(throw_out_genes) > 0){
+    warning("Some genes not in dds object!")
+    warning(throw_out_genes)
+  }
+
+  if(length(de_genes) == 0){
+    stop("No genes in de_genes found in dds object, check gene names!")
+  }
+
   if(is.null(color_test)){
     color_test <- brewer.pal(length(levels(dds[[group]])), "Set1")
     names(color_test) <- levels(dds[[group]])
@@ -141,6 +156,18 @@ make_heatmap <- function(dds, vsd, de_genes, treatment, control, group,
   # dataframe so it can be plotted. When it isn't centered it is very hard to
   # see any trends because all genes have very different expression levels.
   heatmap_scale <- t(scale(t(heatmap_df), scale = TRUE))
+
+  # Check for and remove NA
+  all_genes <- rownames(heatmap_scale)
+  
+  # Remove genes with all the same expression values
+  heatmap_scale <- heatmap_scale[complete.cases(heatmap_scale),]
+  
+  if(all_genes != rownames(heatmap_scale)){
+    warning("Some genes had the same expression values and were removed: ")
+    warning(setdiff(all_genes, rownames(heatmap_scale)))
+  }
+
   palOut <- colorRampPalette(blueYellow)(256)
   if(!cluster_cols){
     if(!identical(colnames(heatmap_scale), rownames(sample_plot))){
