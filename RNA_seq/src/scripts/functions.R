@@ -168,6 +168,11 @@ make_heatmap <- function(dds, vsd, de_genes, treatment, control, group,
     warning(setdiff(all_genes, rownames(heatmap_scale)))
   }
 
+  if(nrow(heatmap_scale) == 0){
+    error(paste0("No genes left to plot, check the gene names and expression values",
+                 " to make sure scaling doesn't throw out your expression values!"))
+  }
+
   palOut <- colorRampPalette(blueYellow)(256)
   if(!cluster_cols){
     if(!identical(colnames(heatmap_scale), rownames(sample_plot))){
