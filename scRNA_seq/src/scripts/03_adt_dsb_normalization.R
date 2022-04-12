@@ -74,7 +74,7 @@ if(HTO){
 
 } else {
   # Read in my exisitng object as the "positive"
-  starting_object <- readRDS(file.path(save_dir, "rda_obj", "seurat_unprocessed.rds"))
+  starting_object <- readRDS(file.path(save_dir, "rda_obj", "seurat_unfilt.rds"))
 
   # define a vector of cell-containing barcodes and remove them from unfiltered data 
   stained_cells <- colnames(starting_object)
@@ -98,48 +98,51 @@ if(HTO){
   # filter barcodes to only include those with data for both assays 
   md <- md %>% dplyr::filter(rna_size > 0 & prot_size > 0 )
 
-  ggplot(md, aes(x = log10(ngene), y = prot_size )) +
+  ggplot(md, aes(y = rna_size, x = prot_size )) +
     theme_bw() + 
     geom_bin2d(bins = 300) + 
     scale_fill_viridis_c(option = "C") + 
     facet_wrap(~droplet_class) 
 
+    
+  ## CHANGE BASED ON THE ABOVE PLOT!!! ##
+  
   # define a vector of background droplet barcodes based on protein library size and mRNA content
-  background_drops <- md[md$prot_size > 1.5 &
-                          md$prot_size < 3 & md$ngene < 100, ]$bc
+  background_drops <- md[md$prot_size > 0.5 &
+                          md$prot_size < 1.5 & md$rna_size < 2.5, ]$bc
 
   neg_adt_matrix <- as.matrix(prot[ , background_drops])
 
   # Get positive cells
-  positive_object <- readRDS(paste0(save_dir, "rda_obj/seurat_doublet.rds"))
+  positive_object <- readRDS(file.path(save_dir, "rda_obj/seurat_doublet.rds"))
 
   positive_cells <- colnames(positive_object)
   positive_adt_matrix <- as.matrix(prot[ , positive_cells])
 
 }
 
+# Retain the original object
+positive_object[["CLR_ADT"]] <- positive_object[["ADT"]]
+
 # calculate quantiles of the raw protein matrix 
 d1 <- data.frame(pmax = apply(positive_adt_matrix, 1, max)) %>% 
   rownames_to_column('prot') %>% arrange(pmax)
 
 # CHECK D1 AND DETERMINE IF ANYTHING NEEDS TO BE REMOVED!!!
-# remove non staining CD137_A0355 protein 
-#prot_names <- rownames(positive_adt_matrix)
-#positive_adt_matrix <- positive_adt_matrix[!prot_names == 'CD137_A0355', ]
-#neg_adt_matrix <- neg_adt_matrix[!prot_names == 'CD137_A0355', ]
+# Think about removing CD27.1?
+prot_names <- rownames(positive_adt_matrix)
+positive_adt_matrix <- positive_adt_matrix[!prot_names == 'CD27.1', ]
+neg_adt_matrix <- neg_adt_matrix[!prot_names == 'CD27.1', ]
 
 # Run the normalization
 dsb_norm_prot <- DSBNormalizeProtein(
   cell_protein_matrix = positive_adt_matrix,
   empty_drop_matrix = neg_adt_matrix,
-  denoise.counts = TRUE,
+  denoise.counts = FALSE, # Set to TRUE if isotype controls are present
   use.isotype.control = FALSE)
 
 # Add to object
 positive_object[["ADT"]] <- CreateAssayObject(data = dsb_norm_prot)
 
-positive_object[["RAW_ADT"]] <- CreateAssayObject(data = positive_adt_matrix)
-
-
 # Save
-saveRDS(positive_object, file.path(save_dir, "rda_obj", "seurat_doublet.rds"))
+saveRDS(positive_object, file.path(save_dir, "rda_obj", "seurat_adt.rds"))
