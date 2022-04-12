@@ -1,0 +1,77 @@
+# ==== Config file for running the 10x Cell Ranger pipeline ====================
+
+
+# Path to the fastq directory, multiple directories can be given.
+RAW_DATA:
+    - "raw_data"
+
+# A list of sample names. This will be the name of the output folder. All sample 
+# names must be unique. There must be the same number of sample names as RNA_samples
+# below.
+SAMPLES:
+    - "WT_mouse_1"
+    - "WT_mouse_2"
+    - "WT_mouse_3"
+
+# Path to the output directory.
+RESULTS:
+    "results"
+
+# Path to the Cell Ranger genome reference.
+GENOME:
+    "/beevol/home/rbilab/ref/cellranger/mouse/refdata-gex-mm10-2020-A"
+
+# Maximum number of jobs per sample that can be submitted by Cell Ranger
+# at a time.
+MAX_JOBS:
+    24
+
+# Path to where sicelore was downloaded. This will be used to locate the jar files
+SICELORE_PATH:
+    /beevol/home/wellskri/packages/sicelore
+
+# Path to picard.jar
+PICARD_PATH:
+    /cluster/software/modules-sw/picard-tools/2.20.1
+
+# Path to the script for MinionQC
+MINION_QC_PATH:
+    #/beevol/home/wellskri/packages/minionqc
+    /beevol/home/wellskri/Analysis/Lori_Sussel/Maria_Hansen/long_read_sc/nanopore/src/scripts
+
+# Path to directory containing results from 10x experiment (samples must have the same names)
+TENX_DIR:
+  /beevol/home/wellskri/Analysis/Lori_Sussel/Maria_Hansen/long_read_sc/10x_genomics/results
+
+# List of chromosomes of interest
+CHR_LIST:
+    - "Chr1"
+    - "Chr2"
+    - "Chr3"
+    - "Chr4"
+    - "Chr5"
+    - "Chr6"
+    - "Chr7"
+    - "Chr8"
+    - "Chr9"
+    - "Chr10"
+    - "Chr11"
+    - "Chr12"
+    - "Chr13"
+    - "Chr14"
+    - "Chr15"
+    - "Chr16"
+    - "Chr17"
+    - "Chr18"
+    - "Chr19"
+    - "ChrM"
+    - "ChrY"
+    - "ChrX"
+    - "Chr3"
+    - "Chr4"
+    - "Chr5"
+
+# The cutoff for calling a read "full length". This should be a fraction of the full
+# transcript length
+CUTOFF:
+    0.8

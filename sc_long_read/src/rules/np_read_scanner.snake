@@ -1,0 +1,75 @@
+# Scans nanopore reads for polyA tails and 10x adaptors. Outputs forward stranded reads
+
+# This is set as a checkpoint not as a rule so that future rules can act on each of the
+# files in the output directory in parallel.
+rule read_scanner:
+    input:
+        "{results}/parse_illumina/{sample}_parsed.obj"
+    output:
+        directory = directory("{results}/read_scanner/{sample}"),
+        log_file = "{results}/read_scanner/{sample}/done.txt"
+    params:
+        job_name = "read_scanner",
+        memory   = "select[mem>60] rusage[mem=60]",
+        sicelore = SICELORE_PATH,
+        raw_data = RAW_DATA
+    log:
+        "{results}/logs/read_scanner/{sample}_read"
+    threads:
+        1
+    run:
+        illumina_scanner = (params.sicelore + "/Jar/NanoporeReadScanner-0.5.jar")
+        data_path = (params.raw_data[0] + "/" + wildcards.sample + "/")
+        shell(
+            """
+            java -jar \
+                {illumina_scanner} \
+                -d {data_path} \
+                -o {output[0]} \
+                -w 175 \
+                -v ".{{1,}}.fastq.gz"
+            """
+        )
+        with open(output[1], "w") as outfile:
+            outfile.write("done\n")
+
+# Cat files
+rule cat_files:
+    input:
+        "{results}/read_scanner/{sample}/done.txt"
+    output:
+        "{results}/read_scanner_cat/{sample}.fastq.gz" # Re add temp when ready
+    params:
+        job_name    = "cat_files",
+        memory      = "select[mem>60] rusage[mem=60]",
+        input_files = "{results}/read_scanner/{sample}/passed/*.fastqFWD.gz" 
+    log:
+        "{results}/logs/group_fastq/{sample}_cat_files"
+    shell:
+        """
+        zcat {params.input_files} > {output}
+        """
+
+
+# Split
+checkpoint split_files:
+    input:
+        "{results}/read_scanner_cat/{sample}.fastq.gz"
+    output:
+        directory("{results}/split_fastqs/{sample}")
+    params:
+        job_name = "split_files",
+        memory   = "select[mem>20] rusage[mem=20]",
+        out_name = "{results}/split_fastqs/{sample}/{sample}_split.fastq.gz"
+    log:
+        "{results}/logs/split_fastqs/{sample}_split"
+    shell:
+        """
+        mkdir -p {output}
+        fastp -i {input} \
+            -Q -A --thread 1 --split_prefix_digits=4 \
+            --out1={params.out_name} \
+            --split=18
+        rm fastp.json
+        rm fastp.html
+        """

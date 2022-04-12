@@ -1,0 +1,250 @@
+def _get_tenx_barcode_output(wildcards):
+    checkpoint_output = checkpoints.split_files.get(**wildcards).output[0]
+    print(wildcards)
+    print(checkpoint_output)
+    return expand("{results}/tenx_barcode/{sample}/{id}.GEUS10xAttributes.sorted_umifound_.bam",
+       sample=wildcards.sample,
+       results = wildcards.results,
+       id=glob_wildcards(os.path.join(checkpoint_output, "{id}." + wildcards.sample + "_split.fastq.gz")).id)
+def _get_tenx_barcode_all_output(wildcards):
+    checkpoint_output = checkpoints.split_files.get(**wildcards).output[0]
+    print(wildcards)
+    print(checkpoint_output)
+    return expand("{results}/tenx_barcode/{sample}/{id}.GEUS10xAttributes.sorted.bam",
+       sample=wildcards.sample,
+       results = wildcards.results,
+       id=glob_wildcards(os.path.join(checkpoint_output, "{id}." + wildcards.sample + "_split.fastq.gz")).id)
+
+
+# Tage genes with names
+rule tag_genes:
+    input:
+        bam_file = "{results}/minimap2/{sample}/{id}.sorted.bam",
+        refflat  = "{results}/cellranger_refflat.txt"
+    output:
+        "{results}/tag_genes/{sample}/{id}.GE.sorted.bam"
+    params:
+        job_name = "tag_genes",
+        memory   = "select[mem>10] rusage[mem=10]",
+        sicelore = SICELORE_PATH
+    log:
+        "{results}/logs/tag_genes/{sample}_{id}_tag"
+    run:
+        gene_jar = (params.sicelore + "/Jar/Sicelore-2.0.jar")
+        shell(
+            """
+            java -jar -Xmx12g {gene_jar} AddGeneNameTag \
+                I={input[0]} \
+                O={output[0]} \
+                REFFLAT={input[1]} \
+                GENETAG=GE \
+                ALLOW_MULTI_GENE_READS=true \
+                USE_STRAND_INFO=true \
+                VALIDATION_STRINGENCY=SILENT
+
+            samtools index {output[0]}
+            """
+            )
+
+# Tage reads with quality scores
+rule tag_quality:
+    input:
+        bam_file = "{results}/tag_genes/{sample}/{id}.GE.sorted.bam",
+        fastq    = "{results}/split_fastqs/{sample}/{id}.{sample}_split.fastq.gz"
+    output:
+        "{results}/tag_quality/{sample}/{id}.GEUS.sorted.bam"
+    params:
+        job_name = "tag_quality",
+        memory   = "select[mem>10] rusage[mem=10]",
+        sicelore = SICELORE_PATH
+    log:
+        "{results}/logs/tag_quality/{sample}_{id}_tag"
+    run:
+        gene_jar = (params.sicelore + "/Jar/Sicelore-2.0.jar")
+        unzipped_fastq = re.sub(r"\.gz", "", input.fastq)
+        shell(
+            """
+            gunzip {input[1]}
+            java -jar -Xmx12g {gene_jar} AddBamReadSequenceTag \
+                I={input[0]} \
+                O={output[0]} \
+                FASTQ={unzipped_fastq}
+
+            samtools index {output[0]}
+            gzip {unzipped_fastq}
+            """
+            )
+
+rule tenx_barcode:
+    input:
+        bam_file = "{results}/tag_quality/{sample}/{id}.GEUS.sorted.bam",
+        illumina = "{results}/parse_illumina/{sample}_parsed.obj"
+    output:
+        "{results}/tenx_barcode/{sample}/{id}.GEUS10xAttributes.sorted_umifound_.bam",
+        "{results}/tenx_barcode/{sample}/{id}.GEUS10xAttributes.sorted.bam",
+        "{results}/tenx_barcode/{sample}/{id}.GEUS10xAttributes.sorted_umifound_.bam.bai",
+        "{results}/tenx_barcode/{sample}/{id}.GEUS10xAttributes.sorted.bam.bai"
+    params:
+        job_name  = "{sample}_tenx_barcode",
+        memory    = "select[mem>50] rusage[mem=50]",
+        sicelore  = SICELORE_PATH,
+        log       = "{results}/logs/tenx_barcode/{sample}_{id}_tag.txt"
+    threads:
+        20
+    log:
+        "{results}/logs/tenx_barcode/{sample}_{id}_tag"
+    run:
+        script_path = (params.sicelore + "/Jar/NanoporeBC_UMI_finder-1.0.jar")
+        shell(
+            """
+            java -jar -Xmx30g {script_path} \
+                -i {input.bam_file} \
+                -o {output[1]} \
+                -k {input.illumina} \
+                --maxUMIfalseMatchPercent 2 \
+                --maxBCfalseMatchPercent 5 \
+                --logFile {params.log} \
+                -t {threads} \
+                -a 175
+
+            samtools index {output[0]}
+            samtools index {output[1]}
+            """
+            )
+
+rule count_tags:
+    input:
+        umi_input = _get_tenx_barcode_output,
+        all_input = _get_tenx_barcode_all_output
+    output:
+        "{results}/tenx_barcode/{sample}/counted_barcodes.tsv"
+    params:
+        job_name  = "{sample}_count_tags",
+        memory    = "select[mem>10] rusage[mem=10]"
+    log:
+        "{results}/logs/count_tags/{sample}_count"
+    script:
+        "../scripts/count_errors.py"
+
+rule find_lengths:
+    input:
+        umi_input = _get_tenx_barcode_output,
+        all_input = _get_tenx_barcode_all_output
+    output:
+        all_output_gene = "{results}/read_lengths/{sample}/all_lengths_gene.csv",
+        umi_output_gene = "{results}/read_lengths/{sample}/umi_lengths_gene.csv",
+        all_output_no_gene = "{results}/read_lengths/{sample}/all_lengths_no_gene.csv",
+        umi_output_no_gene = "{results}/read_lengths/{sample}/umi_lengths_no_gene.csv"
+    params:
+        job_name  = "{sample}_lengthsb",
+        memory    = "select[mem>10] rusage[mem=10]"
+    log:
+        "{results}/logs/read_lengths/{sample}_count"
+    script:
+        "../scripts/test_read_length.py"
+
+rule merge_bams:
+    input:
+        full_list = _get_tenx_barcode_output
+    output:
+        "{results}/combined_bams/{sample}_GEUS10xAttributes.umifound.bam"
+    params:
+        job_name  = "{sample}_bam_combine",
+        memory    = "select[mem>50] rusage[mem=50]",
+        picard    = PICARD_PATH
+    log:
+        "{results}/logs/combined_bams/{sample}_combine"
+    threads:
+        8
+    run:
+        script_path = params.picard + "/picard.jar"
+        input_command = ["I=" + i for i in input.full_list]
+        shell(
+            """
+            java -jar -Xmx44g {script_path} MergeSamFiles \
+                {input_command} \
+                ASSUME_SORTED=true \
+                USE_THREADING=true \
+                MAX_RECORDS_IN_RAM=100000000 \
+                OUTPUT={output} \
+                VALIDATION_STRINGENCY=SILENT
+
+            samtools index {output}
+            """
+            )
+
+rule bam_all_for_gviz:
+    input:
+        bam_file = "{results}/combined_bams/{sample}_GEUS10xAttributes.umifound.bam"
+    output:
+        "{results}/combined_bams/{sample}_GEUS10xAttributes.umifound_filtered.bam",
+        "{results}/combined_bams/{sample}_GEUS10xAttributes.umifound_filtered.bam.bai"
+    params:
+        job_name = "primary_alignments",
+        memory   = "select[mem>10] rusage[mem=10]"
+    log:
+        "{results}/logs/primary_bam/{sample}"
+    shell:
+        """
+        samtools view \
+            -b \
+            -F 256 \
+            {input} > {output[0]}
+
+        samtools index {output[0]}
+        """
+
+# Repeat tagging after consensus
+# Tage genes with names
+rule tag_genes_consensus:
+    input:
+        bam_file = "{results}/minimap2_consensus/{sample}.sorted.bam",
+        refflat  = "{results}/cellranger_refflat.txt"
+    output:
+        "{results}/tag_genes_consensus/{sample}.GE.sorted.bam"
+    params:
+        job_name = "tag_genes_{sample}",
+        memory   = "select[mem>10] rusage[mem=10]",
+        sicelore = SICELORE_PATH
+    log:
+        "{results}/logs/tag_genes_consensus/{sample}_tag"
+    run:
+        gene_jar = (params.sicelore + "/Jar/Sicelore-2.0.jar")
+        shell(
+            """
+            java -jar -Xmx12g {gene_jar} AddGeneNameTag \
+                I={input[0]} \
+                O={output[0]} \
+                REFFLAT={input[1]} \
+                GENETAG=GE \
+                ALLOW_MULTI_GENE_READS=true \
+                USE_STRAND_INFO=true \
+                VALIDATION_STRINGENCY=SILENT
+
+            samtools index {output[0]}
+            """
+            )
+
+# Tage UMIs and BCs
+rule tag_UMI_BC_consensus:
+    input:
+        bam_file = "{results}/tag_genes_consensus/{sample}.GE.sorted.bam"
+    output:
+        "{results}/tag_UMI_consensus/{sample}.GEBC.sorted.bam"
+    params:
+        job_name = "tag_bcs_{sample}",
+        memory   = "select[mem>10] rusage[mem=10]",
+        sicelore = SICELORE_PATH
+    log:
+        "{results}/logs/tag_UMI_consensus/{sample}_tag"
+    run:
+        gene_jar = (params.sicelore + "/Jar/Sicelore-2.0.jar")
+        shell(
+            """
+            java -jar -Xmx12g {gene_jar} AddBamMoleculeTags \
+                I={input[0]} \
+                O={output[0]}
+
+            samtools index {output[0]}
+            """
+            )

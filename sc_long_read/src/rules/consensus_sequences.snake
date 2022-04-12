@@ -1,0 +1,54 @@
+# Finds consensus UMI sequences
+
+# Could subset to chromosomes...
+
+rule consensus:
+    input:
+        bam_file = "{results}/combined_bams/{sample}_GEUS10xAttributes.umifound.bam"
+    output:
+        "{results}/consensus/{sample}_molecules.fa"
+    params:
+        job_name = "consensus_{sample}",
+        memory   = "select[mem>50] rusage[mem=50]",
+        sicelore = SICELORE_PATH,
+        temp_dir = "{results}/consensus/{sample}"
+    log:
+        "{results}/logs/consensus/{sample}_consensus"
+    threads:
+        24
+    run:
+        gene_jar = (params.sicelore + "/Jar/Sicelore-2.0.jar")
+        shell(
+            """
+            mkdir {params.temp_dir}
+
+            java -jar -Xmx50g {gene_jar} ComputeConsensus \
+                I={input[0]} \
+                O={output[0]} \
+                TMPDIR={params.temp_dir} \
+                T={threads}
+            """
+            )
+
+# # Deduplicate fa fils
+# rule deduplicate:
+#     input:
+#         fa_file = "{results}/consensus/{sample}_molecules.fa"
+#     output:
+#         "{results}/consensus/{sample}_molecules_dedup.fa"
+#     params:
+#         job_name = "deduplicate_{sample}",
+#         memory   = "select[mem>10] rusage[mem=10]",
+#         sicelore = SICELORE_PATH
+#     log:
+#         "{results}/logs/deduplicate/{sample}_deduplicate"
+#     run:
+#         gene_jar = (params.sicelore + "/Jar/Sicelore-2.0.jar")
+#         shell(
+#             """
+#             java -jar -Xmx22g {gene_jar} DeduplicateMolecule \
+#             I={input[0]} \
+#             O={output[0]} 
+#             """
+#             )
+

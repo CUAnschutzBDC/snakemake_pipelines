@@ -1,0 +1,42 @@
+# Parse Illumina data for barcodes and UMIs attached to genes
+# -Xmx sets maximum heap size
+
+# Function to return paths of input files
+def _get_input(wildcards):
+    # Grab path of the fastq file
+    tsv = TENX_DIR + "/" + wildcards.sample + "/outs/filtered_feature_bc_matrix/barcodes.tsv.gz"
+    bam = TENX_DIR + "/" + wildcards.sample + "/outs/possorted_genome_bam.bam"
+    return(tsv, bam)
+
+rule parse_illumina:
+    input:
+        _get_input
+    output:
+        "{results}/parse_illumina/{sample}_parsed.obj"
+    params:
+        job_name = "illumina_parser",
+        memory   = "select[mem>60] rusage[mem=60]",
+        sicelore = SICELORE_PATH
+    log:
+        "{results}/logs/parse_illumina/{sample}_parse"
+    threads:
+        1
+    run:
+        illumina_parser = (params.sicelore + "/Jar/IlluminaParser-1.0.jar")
+        new_tsv = re.sub(r'\.gz', '', input[0])
+        shell(
+            """
+            gunzip {input[0]}
+
+            java -Xmx50G -jar \
+                {illumina_parser} \
+                --inFileIllumina {input[1]} \
+                --tsv {new_tsv} \
+                --outFile {output[0]} \
+                --cellBCflag CB \
+                --umiFlag UB \
+                --geneFlag GN
+
+            gzip {new_tsv}
+            """
+        )

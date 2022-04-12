@@ -1,0 +1,234 @@
+# This makes a minimap reference and maps nanopore reads to it.
+
+# The refflat is made based on this answer https://github.com/ucagenomix/sicelore/issues/23
+
+# USE THIS FOR TROUBLESHOOTING
+def _get_minimap_output(wildcards):
+    checkpoint_output = checkpoints.split_files.get(**wildcards).output[0]
+    print(wildcards)
+    print(checkpoint_output)
+    return expand("{results}/minimap2/{sample}/{id}.sorted.bam",
+       sample=wildcards.sample,
+       results = wildcards.results,
+       id=glob_wildcards(os.path.join(checkpoint_output, "{id}." + wildcards.sample + "_split.fastq")).id)
+
+# https://github.com/ucagenomix/sicelore/issues/23
+
+##################
+# Genome mapping #
+##################
+
+rule make_minimap_ref:
+    output:
+        mmi_ref = "{results}/cellranger_ref.mmi",
+        junc    = "{results}/cellranger_junctions.bed",
+        refflat = "{results}/cellranger_refflat.txt"
+    params:
+        job_name = "minimap_ref",
+        memory   = "select[mem>60] rusage[mem=60]",
+        genome   = GENOME
+    log:
+        "{results}/logs/minimap_ref/minimap_ref"
+    threads:
+        1
+    run:
+        fa_ref = (params.genome + "/fasta/genome.fa")
+        junc_ref = (params.genome + "/genes/genes.gtf")
+        temp_refflat = (wildcards.results + "/cellranger_refflat_temp.txt")
+        shell(
+            """
+            # Make mmi ref for minimap
+            minimap2 -x splice -d \
+                {output[0]} \
+                {fa_ref}
+
+            # make junction ref ro minimap
+            paftools.js gff2bed \
+                -j {junc_ref} > {output[1]}
+
+            # make refflat for adding gene names
+            gtfToGenePred -genePredExt -geneNameAsName2 \
+                {junc_ref} {temp_refflat}
+
+            paste <(cut -f 12 {temp_refflat}) <(cut -f 1-10 {temp_refflat}) > {output[2]}
+
+            rm {temp_refflat}
+            """
+        )
+
+# Decide if the file is large enough to be split
+
+rule run_mimimap:
+    input:
+        fastq_file = "{results}/split_fastqs/{sample}/{id}.{sample}_split.fastq.gz",
+        mmi_ref = "{results}/cellranger_ref.mmi",
+        junc = "{results}/cellranger_junctions.bed"
+    output:
+        aligned_sam = temp("{results}/minimap2/{sample}/{id}.aligned.sam"),
+        unsorted_bam = temp("{results}/minimap2/{sample}/{id}.unsorted.bam"),
+        sorted_bam = "{results}/minimap2/{sample}/{id}.sorted.bam",
+        bai_file = "{results}/minimap2/{sample}/{id}.sorted.bam.bai"
+    params:
+        job_name = "minimap2",
+        memory   = "select[mem>60] rusage[mem=60]"
+    log:
+        "{results}/logs/minimap/{sample}_{id}_map"
+    threads:
+        20
+    run:
+        shell(
+            """
+            minimap2 -ax splice \
+                -uf --MD --sam-hit-only \
+                -t {threads} \
+                --junc-bed {input[2]} \
+                {input[1]} \
+                {input[0]} > {output[0]}
+
+            samtools view -Sb {output[0]} -o {output[1]}
+
+            samtools sort {output[1]} -o {output[2]}
+
+            samtools index {output[2]}
+            """
+            )
+
+
+# This looks basically identical to the previous, but I don't want to mess with input files
+rule minimap2_consensus:
+    input:
+        fastq_file = "{results}/consensus/{sample}_molecules.fa",
+        mmi_ref = "{results}/cellranger_ref.mmi",
+        junc = "{results}/cellranger_junctions.bed"
+    output:
+        aligned_sam = temp("{results}/minimap2_consensus/{sample}.aligned.sam"),
+        unsorted_bam = temp("{results}/minimap2_consensus/{sample}.unsorted.bam"),
+        sorted_bam = "{results}/minimap2_consensus/{sample}.sorted.bam",
+        bai_file = "{results}/minimap2_consensus/{sample}.sorted.bam.bai"
+    params:
+        job_name = "minimap2_consensus",
+        memory   = "select[mem>60] rusage[mem=60]"
+    log:
+        "{results}/logs/minimap2_consensus/{sample}_map"
+    threads:
+        20
+    run:
+        shell(
+            """
+            minimap2 -ax splice \
+                -uf --MD --sam-hit-only \
+                -t {threads} \
+                --junc-bed {input[2]} \
+                {input[1]} \
+                {input[0]} > {output[0]}
+
+            samtools view -Sb {output[0]} -o {output[1]}
+
+            samtools sort {output[1]} -o {output[2]}
+
+            samtools index {output[2]}
+            """
+            )
+# Arguments
+# -a  Generate CIGAR and output alignments in the SAM format. Minimap2 outputs in
+#     PAF by default.
+# -x splice  Long-read spliced alignment (-k15 -w5 --splice -g2000 -G200k -A1 -B2
+#            -O2,32 -E1,0 -C9 -z200 -ub --junc-bonus=9 --splice-flank=yes). In the
+#            splice mode, 1) long deletions are taken as introns and represented as
+#            the ‘N’ CIGAR operator; 2) long insertions are disabled; 3) deletion and
+#            insertion gap costs are different during chaining; 4) the computation of
+#            the ‘ms’ tag ignores introns to demote hits to pseudogenes.
+# -uf CHAR   How to find canonical splicing sites GT-AG - f: transcript strand; b: both
+#            strands; n: no attempt to match GT-AG [n]
+# --MD    Output the MD tag (see the SAM spec)
+# --sam-hit-only In SAM, don’t output unmapped reads.
+# -t INT  Number of threads [3]. Minimap2 uses at most three threads when indexing
+#         target sequences, and uses up to INT+1 threads when mapping (the extra thread
+#         is for I/O, which is frequently idle and takes little CPU time).
+# --junc-bed FILE Gene annotations in the BED12 format (aka 12-column BED), or intron
+#                 positions in 5-column BED. With this option, minimap2 prefers splicing
+#                 in annotations. BED12 file can be converted from GTF/GFF3 with
+#                 ‘paftools.js gff2bed anno.gtf’ [].
+
+#########################
+# Transcriptome mapping #
+#########################
+
+rule make_transcriptome_fa:
+    input:
+        gtf   = GENOME + "/genes/genes.gtf",
+        fasta = GENOME + "/fasta/genome.fa" 
+        # gtf   = expand("{genome}/genes/genes.gtf", genome = GENOME),
+        # fasta = expand("{genome}/fasta/genome.fa", genome = GENOME)
+    output:
+        "{results}/transcriptome_ref/transcriptome.transcripts.fa"
+    params:
+        job_name  = "create_reference",
+        memory    = "select[mem>50] rusage[mem=50]",
+        out_dir   = "{results}/transcriptome_ref/transcriptome"
+    threads:
+        1
+    log:
+        "{results}/logs/create_reference/reference"
+    shell:
+        """
+        module load rsem/1.3.3
+
+        rsem-prepare-reference \
+            --gtf {input.gtf} \
+            {input.fasta} \
+            {params.out_dir}
+        """
+
+rule make_minimap_transcript_ref:
+    input:
+         "{results}/transcriptome_ref/transcriptome.transcripts.fa"
+    output:
+        mmi_ref = "{results}/cellranger_transcriptome_ref.mmi"
+    params:
+        job_name = "minimap_ref",
+        memory   = "select[mem>60] rusage[mem=60]"
+    log:
+        "{results}/logs/minimap_ref/minimap_ref"
+    threads:
+        1
+    shell:
+        """
+        # Make mmi ref for minimap
+        minimap2 -x splice -d \
+            {output[0]} \
+            {input}
+        """
+
+rule run_mimimap_transcriptome:
+    input:
+        fastq_file = "{results}/cell_fastqs/{sample}_fastq.fastq.gz",
+        mmi_ref = "{results}/cellranger_transcriptome_ref.mmi"
+    output:
+        unsorted_bam = temp("{results}/minimap2_transcriptome/{sample}.unsorted.bam"),
+        sorted_bam = "{results}/minimap2_transcriptome/{sample}.sorted.bam"
+        #bai_file = "{results}/minimap2_transcriptome/{sample}/{id}.sorted.bam.bai"
+    params:
+        job_name = "minimap2_{sample}",
+        memory   = "select[mem>60] rusage[mem=60]"
+    log:
+        "{results}/logs/minimap_transcriptome/{sample}_map"
+    threads:
+        8
+    run:
+        shell(
+            """
+            minimap2 \
+                -t {threads} \
+                -ax map-ont \
+                -p 1.0 \
+                -N 100 \
+                {input.mmi_ref} \
+                {input.fastq_file} | \
+                samtools view -Sb > {output.unsorted_bam}
+
+            samtools sort -n {output.unsorted_bam} -o {output.sorted_bam}
+            """
+            )
+
+

@@ -1,0 +1,36 @@
+"""
+1. Scilore
+2. Salmon 
+    * First try to make a fastq file per cell, maybe try to include the UMI in the read name and gene?
+    * Map with minimap2
+    * Count with salmon
+3. My own
+    * Use fastq and minimap output above
+    * parse bam file, create a dictionary with read name as key and list of transcripts
+        * Maybe check gene name by also having a gene to transcript dictionary
+    * Write a file that outputs all reads and the every transcript they mapped to
+    * Go through dictionary, create a list. If there is only 1 transcript, name by the transcript + gene, otherwise name the multiplets by gene_name_undef, then use a counter.
+    * Write the results of the counter to an output file
+
+This set of rules takes and only keeps reads that are longer than a certain length
+and outputs them into a bamfile
+"""
+
+rule get_full_length_reads:
+    input:
+        "{results}/minimap2_transcriptome/{sample}.sorted.bam"
+    output:
+        "{results}/full_length/{sample}_full_length.bam"
+    params:
+        job_name = "full_length",
+        memory   = "select[mem>20] rusage[mem=20]",
+        cutoff   = CUTOFF
+    log:
+        "{results}/logs/full_length/{sample}_full_length"
+    threads:
+        1
+    script:
+        "../scripts/long_reads.py"
+
+
+

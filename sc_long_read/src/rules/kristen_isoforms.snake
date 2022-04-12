@@ -1,0 +1,45 @@
+"""
+1. Scilore
+2. Salmon 
+    * First try to make a fastq file per cell, maybe try to include the UMI in the read name and gene?
+    * Map with minimap2
+    * Count with salmon
+3. My own
+    * Use fastq and minimap output above
+    * parse bam file, create a dictionary with read name as key and list of transcripts
+        * Maybe check gene name by also having a gene to transcript dictionary
+    * Write a file that outputs all reads and the every transcript they mapped to
+    * Go through dictionary, create a list. If there is only 1 transcript, name by the transcript + gene, otherwise name the multiplets by gene_name_undef, then use a counter.
+    * Write the results of the counter to an output file
+"""
+rule make_fastq:
+    input:
+        bam_file = "{results}/tag_UMI_consensus/{sample}.GEBC.sorted.bam"
+    output:
+        "{results}/cell_fastqs/{sample}_fastq.fastq.gz",
+    params:
+        job_name  = "{sample}_cell_fastqs",
+        memory    = "select[mem>50] rusage[mem=50]",
+    threads:
+        1
+    log:
+        "{results}/logs/cell_fastqs/{sample}"
+    script:
+        "../scripts/make_fastq.py"
+
+
+rule combine_files:
+    input:
+        bam_files = "{results}/minimap2_transcriptome/{sample}.sorted.bam",
+        gtf       = GENOME + "/genes/genes.gtf"
+    output:
+        "{results}/kristen_matrix/{sample}_counts.txt"
+    params:
+        job_name = "{sample}_finish",
+        memory   = "select[mem>60] rusage[mem=60]"
+    threads:
+        1
+    log:
+        "{results}/logs/kristen_matrix/{sample}_done"
+    script:
+        "../scripts/count_reads.py"

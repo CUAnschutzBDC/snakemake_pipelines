@@ -1,0 +1,101 @@
+"""
+1. Scilore
+2. Salmon 
+    * First try to make a fastq file per cell, maybe try to include the UMI in the read name and gene?
+    * Map with minimap2
+    * Count with salmon
+3. My own
+    * Use fastq and minimap output above
+    * parse bam file, create a dictionary with read name as key and list of transcripts
+        * Maybe check gene name by also having a gene to transcript dictionary
+    * Write a file that outputs all reads and the every transcript they mapped to
+    * Go through dictionary, create a list. If there is only 1 transcript, name by the transcript + gene, otherwise name the multiplets by gene_name_undef, then use a counter.
+    * Write the results of the counter to an output file
+
+This set of rules makes one bam per cell and counts those with salmon
+
+TODO - parse the salmon output to make a matrix
+"""
+
+
+def _get_salmon_output(wildcards):
+    checkpoint_output = checkpoints.split_bams.get(**wildcards).output[0]
+    print(wildcards)
+    print(checkpoint_output)
+    return expand("{results}/salmon/{sample}/{barcode}/quant.sf",
+       sample=wildcards.sample,
+       results = wildcards.results,
+       barcode=glob_wildcards(os.path.join(checkpoint_output, "{barcode}.bam")).barcode)
+
+def _get_barcodes(wildcards):
+    checkpoint_output = checkpoints.split_bams.get(**wildcards).output[0]
+    print(wildcards)
+    print(checkpoint_output)
+    return expand("{barcode}",
+       barcode=glob_wildcards(os.path.join(checkpoint_output, "{barcode}.bam")).barcode)
+
+# Split bams
+checkpoint split_bams:
+    input:
+        bam_file = "{results}/minimap2_transcriptome/{sample}.sorted.bam"
+    output:
+        directory("{results}/split_minimap_bams/{sample}")
+    params:
+        job_name = "split_files",
+        memory   = "select[mem>50] rusage[mem=50]",
+        out_dir  = "{results}/split_minimap_bams/{sample}"
+    log:
+        "{results}/logs/split_minimap_bams/{sample}_split"
+    script:
+        "../scripts/make_cell_bam.py"
+
+
+rule run_salmon:
+    input:
+        bam = "{results}/split_minimap_bams/{sample}/{barcode}.bam",
+        transcriptome = "{results}/transcriptome_ref/transcriptome.transcripts.fa"
+    output:
+        "{results}/salmon/{sample}/{barcode}/quant.sf"
+    params:
+        job_name   = "salmon",
+        memory     = "select[hname!=compute10] rusage[mem=10]",
+        out_dir    = "{results}/salmon/{sample}/{barcode}",
+        unsort_bam = "{results}/split_minimap_bams/{sample}/{barcode}_unsort.bam"
+    log:
+        "{results}/logs/salmon/{sample}/{barcode}_salmon"
+    threads:
+        2
+    # group:
+    #     "group_salmon"
+    shell:
+        """
+        echo "start"
+        samtools sort -n {input.bam} -o {params.unsort_bam}
+        echo "sort"
+        salmon \
+            quant \
+            --ont \
+            -p 2 \
+            -t {input.transcriptome} \
+            -l U \
+            -a {params.unsort_bam} \
+            -o {params.out_dir} \
+            --minAssignedFrags=5
+    
+        rm {params.unsort_bam}
+        """
+
+rule merge_salmon:
+    input:
+        _get_salmon_output
+    output:
+        csv_file = "{results}/salmon_matrix/{sample}.csv",
+        rda_obj = "{results}/salmon_matrix/{sample}_sce.rda"
+    params:
+        job_name = "matrix_{sample}",
+        memory   = "select[mem>150] rusage[mem=150]",
+        barcodes = _get_barcodes
+    log:
+        "{results}/logs/salmon_matrix/{sample}"
+    script:
+       "../scripts/collapse_salmon_output.R"

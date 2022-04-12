@@ -1,0 +1,161 @@
+""" Snake pipeline for running analysis of single cell nanopore with 10x data """
+
+# Requires Snakemake 6.0.3 or greater. Works with salmon environment on bodhi
+
+# Configure shell for all rules 
+shell.executable("/bin/bash")
+shell.prefix("set -o nounset -o pipefail -o errexit -x; ")
+import subprocess
+import glob
+import os 
+import re
+
+
+
+# Parameters from config.yaml
+RAW_DATA       = config["RAW_DATA"]
+SAMPLES        = config["SAMPLES"]
+RESULTS        = config["RESULTS"]
+GENOME         = config["GENOME"]
+MAX_JOBS       = config["MAX_JOBS"]
+LSF_TEMPLATE   = config["LSF_TEMPLATE"]
+SICELORE_PATH  = config["SICELORE_PATH"]
+TENX_DIR       = config["TENX_DIR"]
+MINION_QC      = config["MINION_QC_PATH"]
+PICARD_PATH    = config["PICARD_PATH"]
+ISOFORM_METHOD = config["ISOFORM_METHOD"]
+CUTOFF         = config["CUTOFF"]
+
+
+# Function to check paths for input files/directories
+def _check_path(path):
+    if os.path.exists(path):
+        return os.path.abspath(path)
+    else:
+        sys.exit("ERROR: " + path + " does not exist.")
+
+if LSF_TEMPLATE:
+    LSF_TEMPLATE = _check_path(LSF_TEMPLATE)
+else:
+    LSF_TEMPLATE = "lsf"
+
+# Final output files
+rule all:
+    input:
+        # Get barcode and gene information from illumina
+        expand(
+            "{results}/parse_illumina/{sample}_parsed.obj",
+            results = RESULTS, sample = SAMPLES
+        ),
+
+        # Run QC
+        expand(
+            "{results}/minion_qc_{sample}",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Filter to only reads with poly A tails and 10x adapters
+        expand(
+            "{results}/read_scanner/{sample}/done.txt",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Cat all fastqs
+        expand(
+            "{results}/read_scanner_cat/{sample}.fastq.gz",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Split files
+        expand(
+            "{results}/split_fastqs/{sample}",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Count barcode mapping
+        expand(
+            "{results}/tenx_barcode/{sample}/counted_barcodes.tsv",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Find read lengths
+        expand(
+            "{results}/read_lengths/{sample}/all_lengths_gene.csv",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Map and tag files and remerge
+        expand(
+            "{results}/combined_bams/{sample}_GEUS10xAttributes.umifound.bam",
+            results = RESULTS, sample = SAMPLES
+            ),
+        # Create consensus
+        expand(
+            "{results}/consensus/{sample}_molecules.fa",
+            results = RESULTS, sample = SAMPLES
+            ),
+        # Repeat mapping on consensus
+        expand(
+            "{results}/minimap2_consensus/{sample}.sorted.bam",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Repeat tagging
+        expand(
+            "{results}/tag_UMI_consensus/{sample}.GEBC.sorted.bam",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Create matrix
+        expand(
+            "{results}/IsoformMatrix_{sample}/{sample}_genematrix.txt",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Create matrix with UMIs not deduplicated
+        expand(
+            "{results}/IsoformMatrix_{sample}_direct/{sample}_genematrix.txt",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Count using my own strategy
+        expand(
+            "{results}/kristen_matrix/{sample}_counts.txt",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Run salmon on all cells
+        expand(
+            "{results}/salmon_matrix/{sample}.csv",
+            results = RESULTS, sample = SAMPLES
+            ),
+
+        # Gviz
+        expand(
+            "{results}/gviz/{sample}.GEBC_primary_sorted.bam",
+            results = RESULTS, sample = SAMPLES
+            ),
+        expand(
+            "{results}/gviz/{sample}_full_length_primary_sorted.bam",
+            results = RESULTS, sample = SAMPLES
+            )
+
+        # expand(
+        #     "{results}/minimap2_transcriptome/{sample}_primary.bam",
+        #     results = RESULTS, sample = SAMPLES
+        #     ),
+        # expand(
+        #     "{results}/full_length/{sample}_full_length_primary.bam",
+        #     results = RESULTS, sample = SAMPLES
+        #     )
+
+include: "src/rules/parse_illumina.snake"
+include: "src/rules/np_read_scanner.snake"
+include: "src/rules/minimap.snake"
+include: "src/rules/minion_qc.snake"
+include: "src/rules/tag_bams.snake"
+include: "src/rules/consensus_sequences.snake"
+include: "src/rules/create_matrix.snake"
+include: "src/rules/kristen_isoforms.snake"
+include: "src/rules/salmon.snake"
+include: "src/rules/visualization.snake"

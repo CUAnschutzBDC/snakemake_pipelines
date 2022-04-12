@@ -1,0 +1,94 @@
+# Generate the isoform matrix
+
+# Function to return paths of input files
+def _get_tsv(wildcards):
+    # Grab path of the fastq file
+    tsv = TENX_DIR + "/" + wildcards.sample + "/outs/filtered_feature_bc_matrix/barcodes.tsv.gz"
+    return(tsv)
+
+# Create matrix based on consensus (UMI level)
+rule create_matrix:
+    input:
+        bam_file = "{results}/tag_UMI_consensus/{sample}.GEBC.sorted.bam",
+        refflat  = "{results}/cellranger_refflat.txt",
+        tenx_tsv = _get_tsv
+    output:
+        "{results}/IsoformMatrix_{sample}/{sample}_genematrix.txt",
+        "{results}/IsoformMatrix_{sample}/{sample}_isobam.bam",
+        "{results}/IsoformMatrix_{sample}/{sample}_isobam.bam.bai"
+    params:
+        job_name = "create_matrix_{sample}",
+        memory   = "select[mem>15] rusage[mem=15]",
+        sicelore = SICELORE_PATH,
+        outdir   = "{results}/IsoformMatrix_{sample}/",
+        method   = ISOFORM_METHOD
+    log:
+        "{results}/logs/IsoformMatrix/{sample}_tag"
+    run:
+        gene_jar = (params.sicelore + "/Jar/Sicelore-2.0.jar")
+        new_tsv = re.sub(r'\.gz', '', input.tenx_tsv)
+        shell(
+            """
+            gunzip {input.tenx_tsv}
+
+            java -jar -Xmx15g {gene_jar} IsoformMatrix \
+                DELTA=2 \
+                METHOD={params.method} \
+                ISOBAM=true \
+                GENETAG=GE \
+                I={input.bam_file} \
+                REFFLAT={input.refflat} \
+                CSV={new_tsv} \
+                OUTDIR={params.outdir} \
+                PREFIX={wildcards.sample} \
+                VALIDATION_STRINGENCY=SILENT
+
+            gzip {new_tsv}
+
+            samtools index {output[1]}
+            """
+            )
+
+
+# Create matrix based on molecule level
+rule create_matrix_direct:
+    input:
+        bam_file = "{results}/combined_bams/{sample}_GEUS10xAttributes.umifound.bam",
+        refflat  = "{results}/cellranger_refflat.txt",
+        tenx_tsv = _get_tsv
+    output:
+        "{results}/IsoformMatrix_{sample}_direct/{sample}_genematrix.txt",
+        "{results}/IsoformMatrix_{sample}_direct/{sample}_isobam.bam",
+        "{results}/IsoformMatrix_{sample}_direct/{sample}_isobam.bam.bai"
+    params:
+        job_name = "create_matrix_{sample}",
+        memory   = "select[mem>15] rusage[mem=15]",
+        sicelore = SICELORE_PATH,
+        outdir   = "{results}/IsoformMatrix_{sample}_direct/",
+        method   = ISOFORM_METHOD
+    log:
+        "{results}/logs/IsoformMatrix_direct/{sample}_tag"
+    run:
+        gene_jar = (params.sicelore + "/Jar/Sicelore-2.0.jar")
+        new_tsv = re.sub(r'\.gz', '', input.tenx_tsv)
+        shell(
+            """
+            gunzip {input.tenx_tsv}
+
+            java -jar -Xmx15g {gene_jar} IsoformMatrix \
+                DELTA=2 \
+                METHOD={params.method} \
+                ISOBAM=true \
+                GENETAG=GE \
+                I={input.bam_file} \
+                REFFLAT={input.refflat} \
+                CSV={new_tsv} \
+                OUTDIR={params.outdir} \
+                PREFIX={wildcards.sample} \
+                VALIDATION_STRINGENCY=SILENT
+
+            gzip {new_tsv}
+
+            samtools index {output[1]}
+            """
+            )

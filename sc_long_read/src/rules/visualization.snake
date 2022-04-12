@@ -1,0 +1,78 @@
+"""
+Generate files that don't have duplicates so they can be visualized with gviz
+"""
+
+rule bam_for_gviz:
+    input:
+        # bam_file = "{results}/minimap2_transcriptome/{sample}.sorted.bam"
+        bam_file = "{results}/tag_UMI_consensus/{sample}.GEBC.sorted.bam"
+    output:
+        # bam = "{results}/minimap2_transcriptome/{sample}_primary_sorted.bam",
+        # bai = "{results}/minimap2_transcriptome/{sample}_primary_sorted.bam.bai"
+        bam = "{results}/gviz/{sample}.GEBC_primary_sorted.bam",
+        bai = "{results}/gviz/{sample}.GEBC_primary_sorted.bam.bai"
+    params:
+        job_name = "primary_alignments",
+        memory   = "select[mem>50] rusage[mem=50]",
+        # temp_file = "{results}/minimap2_transcriptome/{sample}_primary.bam"
+        temp_file = "{results}/gviz/{sample}.GEBC_primary.bam"
+    log:
+        "{results}/logs/gviz/{sample}_primary"
+    shell:
+        """
+        samtools view \
+            -b \
+            -F 256 \
+            {input} > {params.temp_file}
+
+        samtools sort -o {output.bam} {params.temp_file}
+        rm {params.temp_file}
+
+        samtools index {output.bam}
+        """
+
+# Keep only full length reads
+rule get_full_length_reads:
+    input:
+         "{results}/minimap2_transcriptome/{sample}.sorted.bam"
+        #"{results}/tag_UMI_consensus/{sample}.GEBC.sorted.bam"
+    output:
+        "{results}/gviz/{sample}_full_length.bam"
+    params:
+        job_name = "full_length",
+        memory   = "select[mem>20] rusage[mem=20]",
+        cutoff   = CUTOFF
+    log:
+        "{results}/logs/gviz/{sample}_full_length"
+    threads:
+        1
+    script:
+        "../scripts/long_reads.py"
+
+rule full_bam_gviz:
+    input:
+        # bam_file = "{results}/full_length/{sample}_full_length.bam"
+        bam_file = "{results}/gviz/{sample}_full_length.bam"
+    output:
+        # bam = "{results}/full_length/{sample}_full_length_primary_sorted.bam",
+        # bai = "{results}/full_length/{sample}_full_length_primary_sorted.bam.bai"
+        bam = "{results}/gviz/{sample}_full_length_primary_sorted.bam",
+        bai = "{results}/gviz/{sample}_full_length_primary_sorted.bam.bai"
+    params:
+        job_name = "primary_alignments",
+        memory   = "select[mem>50] rusage[mem=50]",
+        temp_file = "{results}/gviz/{sample}_full_length_primary.bam"
+    log:
+        "{results}/logs/gviz/{sample}_full_primary"
+    shell:
+        """
+        samtools view \
+            -b \
+            -F 256 \
+            {input} > {params.temp_file}
+
+        samtools sort -o {output.bam} {params.temp_file}
+        rm {params.temp_file}
+
+        samtools index {output.bam}
+        """
