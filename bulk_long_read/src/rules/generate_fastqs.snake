@@ -1,0 +1,40 @@
+# Cat files
+rule cat_files:
+    output:
+        "{results}/cat_fastq/{sample}.fastq.gz" # Re add temp when ready
+    params:
+        job_name    = "cat_files",
+        memory      = "select[mem>60] rusage[mem=60]",
+        input_files = RAW_DATA + "/{sample}/*.fastq.gz" 
+    log:
+        "{results}/logs/group_fastq/{sample}_cat_files"
+    shell:
+        """
+        zcat {params.input_files} > {output}
+        """
+
+
+# Split
+checkpoint split_files:
+    input:
+        "{results}/cat_fastq/{sample}.fastq.gz"
+    output:
+        directory("{results}/split_fastqs/{sample}")
+    params:
+        job_name = "split_files",
+        memory   = "select[mem>20] rusage[mem=20]",
+        out_name = "{results}/split_fastqs/{sample}/{sample}_split.fastq.gz"
+    log:
+        "{results}/logs/split_fastqs/{sample}_split"
+    shell:
+        """
+        mkdir -p {output}
+        
+        fastp -i {input} \
+            -Q -A --thread 1 --split_prefix_digits=4 \
+            --out1={params.out_name} \
+            --split=18
+
+        rm fastp.json
+        rm fastp.html
+        """

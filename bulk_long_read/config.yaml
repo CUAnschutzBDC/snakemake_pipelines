@@ -1,0 +1,46 @@
+# ==== Config file for running the 10x Cell Ranger pipeline ====================
+
+
+# Path to the fastq directory
+RAW_DATA:
+    "raw_data"
+    #"small_raw_data"
+
+# A list of sample names. This will be the name of the output folder. All sample 
+# names must be unique. There must be the same number of sample names as RNA_samples
+# below.
+SAMPLES:
+    - "WT_mouse1"
+    - "WT_mouse2"
+    - "WT_mouse3"
+
+# Path to the output directory.
+RESULTS:
+    "results"
+    #"small_results"
+    #"small_results_2"
+    #"small_results_4"
+
+# Path to the genome fa.
+GENOME_FA:
+    "/beevol/home/rbilab/ref/genome/mouse/GRCm38/dna/Mus_musculus.GRCm38.dna.primary_assembly.fa"
+
+# Path to GTF file
+GTF:
+    "/beevol/home/rbilab/ref/annotation/mouse/GRCm38/gtf/Mus_musculus.GRCm38.96.gtf"
+
+GENOME_BUILD:
+    "GRCm38"
+
+# Path to where sicelore was downloaded. This will be used to locate the jar files
+SICELORE_PATH:
+    /beevol/home/wellskri/packages/sicelore
+    
+# Path to picard.jar
+PICARD_PATH:
+    /cluster/software/modules-sw/picard-tools/2.20.1
+
+# Path to the script for MinionQC
+MINION_QC_PATH:
+    #/beevol/home/wellskri/packages/minionqc
+    /beevol/home/wellskri/Analysis/Lori_Sussel/Maria_Hansen/long_read_sc/nanopore/src/scripts

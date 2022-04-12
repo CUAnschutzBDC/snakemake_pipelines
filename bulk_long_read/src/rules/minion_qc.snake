@@ -1,0 +1,32 @@
+# Runs a QC check on nanopore output
+
+rule minion_qc:
+    input:
+        "raw_data/{sample}_sequencing_summary.txt.gz"
+    output:
+        directory("{results}/minion_qc_{sample}"),
+        "{results}/minion_qc_{sample}/done.txt"
+    params:
+        job_name = "minion_qc",
+        memory   = "select[mem>275] rusage[mem=275]",
+        minionqc = MINION_QC
+    log:
+        "{results}/logs/minion_qc/{sample}_qc"
+    threads:
+        1
+    run:
+        script_path = params.minionqc + "/MinIONQC.R"
+        new_input = re.sub(r'\.gz', '', input[0])
+        shell(
+            """
+            zcat {input[0]} > {new_input}
+
+            Rscript {script_path} \
+            -i {new_input} \
+            -o {output[0]}
+
+            rm {new_input}
+            """
+        )
+        with open(output[1], "w") as output:
+            output.write("done\n")

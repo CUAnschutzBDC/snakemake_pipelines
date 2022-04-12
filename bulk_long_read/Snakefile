@@ -1,0 +1,66 @@
+""" Snake pipeline for running analysis of single cell nanopore with 10x data """
+
+# Requires Snakemake 6.0.3 or greater. Works with snakemake_5 environment on bodhi
+
+# Configure shell for all rules 
+shell.executable("/bin/bash")
+shell.prefix("set -o nounset -o pipefail -o errexit -x; ")
+import subprocess
+import glob
+import os 
+import re
+
+
+
+# Parameters from config.yaml
+RAW_DATA      = config["RAW_DATA"]
+SAMPLES       = config["SAMPLES"]
+RESULTS       = config["RESULTS"]
+GENOME_FA     = config["GENOME_FA"]
+MINION_QC     = config["MINION_QC_PATH"]
+PICARD_PATH   = config["PICARD_PATH"]
+GTF           = config["GTF"]
+SICELORE_PATH = config["SICELORE_PATH"]
+GENOME_BUILD  = config["GENOME_BUILD"]
+
+
+
+# Function to check paths for input files/directories
+def _check_path(path):
+    if os.path.exists(path):
+        return os.path.abspath(path)
+    else:
+        sys.exit("ERROR: " + path + " does not exist.")
+
+# Final output files
+rule all:
+    input:
+        # Run QC
+        expand(
+            "{results}/minion_qc_{sample}",
+            results = RESULTS, sample = SAMPLES
+            ),
+        expand(
+            "{results}/combined_bams/{sample}.bam",
+            results = RESULTS, sample = SAMPLES
+            ),
+        expand(
+            "{results}/talon_database.db",
+            results = RESULTS
+            ),
+        expand(
+            "{results}/final_talon_abundance_filtered.tsv",
+            results = RESULTS
+            ),
+        expand(
+            "{results}/final_talon.gtf",
+            results = RESULTS
+            )
+
+
+include: "src/rules/minimap.snake"
+include: "src/rules/minion_qc.snake"
+include: "src/rules/generate_fastqs.snake"
+include: "src/rules/merge_bams.snake"
+include: "src/rules/tag_bams.snake"
+include: "src/rules/talon.snake"

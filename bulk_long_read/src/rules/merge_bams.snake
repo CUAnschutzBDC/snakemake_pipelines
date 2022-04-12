@@ -1,0 +1,37 @@
+def _get_minimap_output(wildcards):
+    checkpoint_output = checkpoints.split_files.get(**wildcards).output[0]
+    print(wildcards)
+    print(checkpoint_output)
+    return expand("{results}/talon_internal_priming/{sample}/{id}.GE.sorted_labeled.bam",
+       sample=wildcards.sample,
+       results = wildcards.results,
+       id=glob_wildcards(os.path.join(checkpoint_output, "{id}." + wildcards.sample + "_split.fastq.gz")).id)
+
+
+rule merge_bams:
+    input:
+        full_list = _get_minimap_output
+    output:
+        "{results}/combined_bams/{sample}.bam"
+    params:
+        job_name  = "{sample}_bam_combine",
+        memory    = "select[mem>375] rusage[mem=375]",
+        picard    = PICARD_PATH
+    log:
+        "{results}/logs/combined_bams/{sample}_combine"
+    threads:
+        8
+    run:
+        script_path = params.picard + "/picard.jar"
+        input_command = ["I=" + i for i in input.full_list]
+        shell(
+            """
+            java -jar -Xmx370g {script_path} MergeSamFiles \
+                {input_command} \
+                ASSUME_SORTED=false \
+                USE_THREADING=true \
+                MAX_RECORDS_IN_RAM=100000000 \
+                OUTPUT={output[0]} \
+                VALIDATION_STRINGENCY=SILENT
+            """
+            )

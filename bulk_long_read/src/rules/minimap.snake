@@ -1,0 +1,88 @@
+# This makes a minimap reference and maps nanopore reads to it.
+
+# The refflat is made based on this answer https://github.com/ucagenomix/sicelore/issues/23
+
+# USE THIS FOR TROUBLESHOOTING
+def _get_minimap_output(wildcards):
+    checkpoint_output = checkpoints.split_files.get(**wildcards).output[0]
+    print(wildcards)
+    print(checkpoint_output)
+    return expand("{results}/minimap2/{sample}/{id}.sorted.bam",
+       sample=wildcards.sample,
+       results = wildcards.results,
+       id=glob_wildcards(os.path.join(checkpoint_output, "{id}." + wildcards.sample + "_split.fastq")).id)
+
+rule make_minimap_ref:
+    output:
+        mmi_ref = "{results}/genome_ref.mmi",
+        junc    = "{results}/genome_junctions.bed",
+        refflat = "{results}/genome_refflat.txt"
+    params:
+        job_name  = "minimap_ref",
+        memory    = "select[mem>60] rusage[mem=60]",
+        genome_fa = GENOME_FA,
+        gtf       = GTF
+    log:
+        "{results}/logs/minimap_ref/minimap_ref"
+    threads:
+        1
+    run:
+        temp_refflat = (wildcards.results + "/genome_refflat_temp.txt")
+        shell(
+            """
+            # Make mmi ref for minimap
+            minimap2 -x splice -d \
+            {output[0]} \
+            {params.genome_fa}
+
+            # make junction ref ro minimap
+            paftools.js gff2bed \
+            -j {params.gtf} > {output[1]}
+
+            # make refflat for adding gene names
+            gtfToGenePred -genePredExt -geneNameAsName2 \
+            {params.gtf} {temp_refflat}
+
+            paste <(cut -f 12 {temp_refflat}) <(cut -f 1-10 {temp_refflat}) > {output[2]}
+
+            rm {temp_refflat}
+            """
+        )
+
+# Decide if the file is large enough to be split
+
+rule run_mimimap:
+    input:
+        fastq_file = "{results}/split_fastqs/{sample}/{id}.{sample}_split.fastq.gz",
+        mmi_ref = "{results}/genome_ref.mmi",
+        junc = "{results}/genome_junctions.bed"
+    output:
+        aligned_sam = temp("{results}/minimap2/{sample}/{id}.aligned.sam"),
+        unsorted_bam = temp("{results}/minimap2/{sample}/{id}.unsorted.bam"),
+        sorted_bam = "{results}/minimap2/{sample}/{id}.sorted.bam",
+        bai_file = "{results}/minimap2/{sample}/{id}.sorted.bam.bai"
+    params:
+        job_name = "minimap2",
+        memory   = "select[mem>60] rusage[mem=60]"
+    log:
+        "{results}/logs/minimap/{sample}_{id}_map"
+    threads:
+        20
+    run:
+        shell(
+            """
+            minimap2 -ax splice \
+                -uf --MD --sam-hit-only \
+                -t {threads} \
+                --junc-bed {input[2]} \
+                {input[1]} \
+                {input[0]} > {output[0]}
+
+            samtools view -Sb {output[0]} -o {output[1]}
+
+            samtools sort {output[1]} -o {output[2]}
+
+            samtools index {output[2]}
+            """
+            )
+

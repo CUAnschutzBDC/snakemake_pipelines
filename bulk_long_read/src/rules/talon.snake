@@ -1,0 +1,237 @@
+# Makes database for talon
+rule talon_database:
+    output:
+        "{results}/talon_database.db"
+    params:
+        job_name   = "talon_database",
+        memory     = "select[mem>10] rusage[mem=10]",
+        out_prefix = "{results}/talon_database",
+        gtf_file   = GTF,
+        build      = GENOME_BUILD,
+        db_copy    = "{results}/talon_database_copy.db"
+    log:
+        "{results}/logs/talon_database/talon_database"
+    threads:
+        1
+    shell:
+        """
+        prefix={params.build}_novel
+        annotation={params.build}_annot
+
+        talon_initialize_database \
+            --f {params.gtf_file} \
+            --a $annotation \
+            --g {params.build} \
+            --idprefix $prefix \
+            --o {params.out_prefix}
+
+        cp {output} {params.db_copy}
+        """
+
+# Runs Talon
+rule talon_internal_priming:
+    input:
+        "{results}/tag_genes/{sample}/{id}.GE.sorted.bam"
+    output:
+        bam_file = "{results}/talon_internal_priming/{sample}/{id}.GE.sorted_labeled.bam"
+
+    params:
+        job_name   = "internal_priming",
+        memory     = "select[mem>10] rusage[mem=10]",
+        fa_file    = GENOME_FA,
+        out_prefix = "{results}/talon_internal_priming/{sample}/{id}.GE.sorted",
+        temp_dir   = "{results}/talon_temp/{sample}_{id}",
+        threads    = 5
+    log:
+        "{results}/logs/talon_internal_priming/{sample}/{sample}_{id}"
+    threads:
+        5
+    shell:
+        """
+        samfile={params.out_prefix}"_labeled.sam"
+
+        talon_label_reads \
+            --f {input} \
+            --g {params.fa_file} \
+            --t {params.threads} \
+            --ar 20 \
+            --deleteTmp \
+            --tmpDir {params.temp_dir} \
+            --o {params.out_prefix}
+
+        samtools view -Sb $samfile -o {output}
+        rm $samfile
+        """
+
+# Make config file
+rule make_config:
+    input:
+        expand(
+            "{results}/combined_bams/{sample}.bam",
+            results = RESULTS, sample = SAMPLES
+            )
+    output:
+        "{results}/talon_config.csv"
+    params:
+        job_name = "make_config",
+        memory   = "select[mem>4] rusage[mem=4]"
+    log:
+        "{results}/logs/make_config/config"
+    threads:
+        1
+    run:
+        with open(output[0], "w") as outfile:
+            for i in input:
+                sample = i.split("/")[2]
+                sample = re.sub(".sam", "", sample)
+                group = sample.split("_")[0]
+                outfile.write("{},{},{},{}\n".format(sample, group, "nanopore", i))
+# Run Talon
+# Change the --cov and --identity based on samples
+# Output: Gene novelty: Known, Antisense (opposite strand), intergenic (no gene alignment)
+# Transcript status: Known, ISM (Incomplete splice match), NIC (novel in catalog, encompasses
+# transcripts that have known splice donors and acceptors, but new connections between them),
+# NNC  (Novel not in catalog transcripts contain at least one novel splice donor or acceptor),
+# Antisense, Intergenic 
+rule run_talon:
+    input:
+        config  = "{results}/talon_config.csv",
+        db_file = "{results}/talon_database.db" 
+    output:
+        "{results}/talon_out_QC.log",
+        "{results}/talon_out_talon_read_annot.tsv"
+    params:
+        job_name   = "run_talon",
+        memory     = "select[mem>400] rusage[mem=400]",
+        build      = GENOME_BUILD,
+        out_prefix = "{results}/talon_out",
+        threads    = 20,
+        db_copy    = "{results}/talon_database_talon_copy.db"
+    log:
+        "{results}/logs/run_talon/talon"
+    threads:
+        20
+    shell:
+        """
+        talon \
+            --f {input.config} \
+            --db {input.db_file} \
+            --build {params.build} \
+            --cov 0.65 \
+            --identity 0.8 \
+            --threads {params.threads} \
+            --o {params.out_prefix}
+
+        cp {input.db_file} {params.db_copy}
+        """
+
+# Filter transcripts using all datasets, this is where you can specify the number of counts
+# and datasets required to call a novel site.
+# Add these options into the config file
+rule filter_transcripts:
+    input:
+        db_file = "{results}/talon_database.db",
+        talon_out = "{results}/talon_out_QC.log"
+    output:
+        "{results}/filter_transcripts.csv"
+    params:
+        job_name   = "filter_transcripts",
+        memory     = "select[mem>10] rusage[mem=10]",
+        build      = GENOME_BUILD
+    log:
+        "{results}/logs/filter_transcripts/talon"
+    threads:
+        1
+    shell:
+        """
+        annotation={params.build}_annot
+
+        talon_filter_transcripts \
+            --db {input.db_file} \
+            --annot $annotation \
+            --maxFracA 0.5 \
+            --minCount 5 \
+            --minDatasets 3 \
+            --o {output}
+        """
+
+# Filter transcripts to also remove "antisense" and "ISM" - maybe
+# add in an option in the config file to pick what is filtered
+rule filter_transcripts_further:
+    input:
+        filter_file = "{results}/filter_transcripts.csv",
+        annotation = "{results}/talon_out_talon_read_annot.tsv"
+    output:
+        filter_file = "{results}/final_filter_transcripts.csv",
+        annotation = "{results}/novel_annotation.tsv"
+    params:
+        job_name   = "filter_transcripts",
+        memory     = "select[mem>10] rusage[mem=10]"
+    log:
+        "{results}/logs/filter_transcripts_further/talon"
+    threads:
+        1
+    script:
+        "../scripts/filter_more.py"
+
+# Find abundance of transcripts
+# Output: Gene novelty: Known, Antisense (opposite strand), intergenic (no gene alignment)
+# Transcript status: Known, ISM (Incomplete splice match), NIC (novel in catalog, encompasses
+# transcripts that have known splice donors and acceptors, but new connections between them),
+# NNC  (Novel not in catalog transcripts contain at least one novel splice donor or acceptor),
+# Antisense, Intergenic 
+rule calculate_abundance:
+    input:
+        db_file = "{results}/talon_database.db",
+        whitelist = "{results}/final_filter_transcripts.csv"
+    output:
+        "{results}/final_talon_abundance_filtered.tsv"
+    params:
+        job_name   = "calculate_abundance",
+        memory     = "select[mem>10] rusage[mem=10]",
+        out_prefix = "{results}/final",
+        build      = GENOME_BUILD
+    log:
+        "{results}/logs/calculate_abundance/talon"
+    threads:
+        1
+    shell:
+        """
+        annotation={params.build}_annot
+
+        talon_abundance \
+            --db {input.db_file} \
+            --whitelist {input.whitelist} \
+            --annot $annotation \
+            --build {params.build} \
+            --o {params.out_prefix}
+        """
+
+# Create new GTF
+rule create_gtf:
+    input:
+        db_file = "{results}/talon_database.db",
+        whitelist = "{results}/final_filter_transcripts.csv"
+    output:
+        "{results}/final_talon.gtf"
+    params:
+        job_name   = "create_gtf",
+        memory     = "select[mem>10] rusage[mem=10]",
+        out_prefix = "{results}/final",
+        build      = GENOME_BUILD
+    log:
+        "{results}/logs/create_gtf/talon"
+    threads:
+        1
+    shell:
+        """
+        annotation={params.build}_annot
+
+        talon_create_GTF \
+            --db {input.db_file} \
+            --whitelist {input.whitelist} \
+            --annot $annotation \
+            --build {params.build} \
+            --o {params.out_prefix}
+        """
+        
