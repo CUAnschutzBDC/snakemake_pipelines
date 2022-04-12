@@ -1,5 +1,7 @@
 # Bulk Long Read
-A snakemake pipeline that can be used to analyze bulk nanopore long read data. This pipeline aligns reads using minimap2 and then identifies novel transcripts and adds these to a new GTF file and calclulates the abundance of each isoform using TALON.
+A snakemake pipeline that can be used to analyze bulk nanopore long read data. This pipeline aligns reads using minimap2 and then identifies novel transcripts and adds these to a new GTF file and calclulates the abundance of each isoform using [TALON](https://github.com/mortazavilab/TALON).
+
+As of April 2022, the development branch was used because it could take bam files (rather than sam files). This saves both time and space. Running on the released `Talon`, the run on the full promethion dataset continuously failed. The pipeline ran in full using the development branch, but did take over 24 hours.
 
 Benefits of this pipeline are that you can use bulk nanopore data to generate a GTF file with transcripts specific to your cell type, condition, or just not annotated in genocode to use with single cell long read analysis.
 
