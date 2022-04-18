@@ -371,11 +371,17 @@ run_gprofiler_all <- function(gene_table, pos_name, neg_name,
 gost_plots <- function(results_table, source, title){
   source_results <- results_table[grep(source, results_table$source), ]
   if (nrow(source_results) > 0) {
+
+    # Order to pick top hits
     source_results <- source_results[order(source_results$precision,
                                            decreasing = TRUE), ]
     if(nrow(source_results) > 40){
       source_results <- source_results[1:40, ]
     }
+
+    # Reorder for plotting
+    source_results <- source_results[order(source_results$precision), ]
+    
     source_results$term_name <- factor(source_results$term_name, levels = 
                                          unique(source_results$term_name))
     source_results$log_padj <- -log10(source_results$p_value)
