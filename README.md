@@ -25,3 +25,5 @@ conda install snakemake -c bioconda -c conda-forge
 ```
 
 Steps to run indivdual pipelines are within their own directories.
+
+If you use any of the pipelines in this repository, please give appropriate credit.
