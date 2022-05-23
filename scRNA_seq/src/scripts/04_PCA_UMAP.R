@@ -4,6 +4,7 @@ library(cowplot)
 library(harmony)
 library(here)
 library(scAnalysisR)
+library(clustree)
 
 # Set theme
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
@@ -122,8 +123,19 @@ if(ADT){
 RNA_pcs <- 28
 ADT_pcs <- 8
 
+# First run through grouping cells
 set.seed(0)
-# UMAP of gene expression
+umap_data <- group_cells(seurat_data, sample, save_dir, nPCs = RNA_pcs,
+                         resolution = 0.8, assay = seurat_assay, HTO = HTO)
+
+seurat_data <- umap_data$object
+
+# Test a range of resolutions
+seurat_data <- FindClusters(seurat_data, resolution = c(0.2, 0.5, 0.8, 1))
+clustree(seurat_data)
+
+# UMAP of gene expression with final resolution selelction
+set.seed(0)
 umap_data <- group_cells(seurat_data, sample, save_dir, nPCs = RNA_pcs,
   resolution = 0.8, assay = seurat_assay, HTO = HTO)
 
@@ -131,11 +143,9 @@ seurat_data <- umap_data$object
 
 gene_plots <- umap_data$plots
 
-plotDimRed(seurat_data, col_by = "Ins1", plot_type = "rna.umap")
-plotDimRed(seurat_data, col_by = "Ins2", plot_type = "rna.umap")
-plotDimRed(seurat_data, col_by = "Gcg", plot_type = "rna.umap")
-plotDimRed(seurat_data, col_by = "Sst", plot_type = "rna.umap")
-plotDimRed(seurat_data, col_by = "tdTomato", plot_type = "rna.umap")
+seurat_data <- BuildClusterTree(seurat_data, dims = 1:RNA_pcs)
+PlotClusterTree(seurat_data)
+
 
 if(ADT){
   if(adt_PCA){
@@ -143,12 +153,26 @@ if(ADT){
   } else{
     adt_reduction <- "pdsb"
   }
-  # UMAP of surface protein
+
+
+  # First set up object
   umap_data <- group_cells(seurat_data, sample, save_dir, nPCs = ADT_pcs,
     resolution = 0.2, assay = "ADT", HTO = HTO, reduction = adt_reduction)
 
   seurat_data <- umap_data$object
 
+  # Test a variety of resolutions
+  seurat_data <- FindClusters(seurat_data, resolution = c(0.1, 0.2, 0.5, 0.8),
+                              graph.name = "ADT_snn")
+  clustree(seurat_data, prefix = "ADT_snn_res.")
+  
+  # UMAP of surface protein with selected resolution
+  set.seed(0)
+  umap_data <- group_cells(seurat_data, sample, save_dir, nPCs = ADT_pcs,
+                           resolution = 0.1, assay = "ADT", HTO = HTO, reduction = adt_reduction)
+  
+  seurat_data <- umap_data$object
+  
   adt_plots <- umap_data$plots
 
 
@@ -176,6 +200,12 @@ if(ADT){
   )
 
 
+  # Test a wide range of resolutions
+  seurat_data <- FindClusters(seurat_data, resolution = c(0.2, 0.5, 0.6, 0.8),
+                              graph.name = "wsnn")
+  clustree(seurat_data, prefix = "wsnn_res.")
+
+  # Run analysis with selected resolution
   seurat_data <- RunUMAP(seurat_data, nn.name = "weighted.nn",
                 reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
   seurat_data <- FindClusters(seurat_data, graph.name = "wsnn",
