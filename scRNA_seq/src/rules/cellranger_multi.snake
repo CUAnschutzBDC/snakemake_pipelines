@@ -24,7 +24,7 @@ rule merge_fastqs:
         adt_dict = SAMPLE_DICT_ADT,
         vdj_dict = SAMPLE_DICT_VDJ
     log:
-        "{results}/logs/{sample}_merge_fastqs"
+        "{results}/logs/merge_fastqs/{sample}_merge_fastqs"
     threads:
         1
     run:
@@ -156,7 +156,7 @@ rule create_sample_csv:
         adt_dict = SAMPLE_DICT_ADT,
         vdj_dict = SAMPLE_DICT_VDJ
     log:
-        "{results}/logs/{sample}_csv"
+        "{results}/logs/sample_csv/{sample}_csv"
     threads:
         1
     run:
@@ -259,7 +259,7 @@ rule cellranger_count:
         adt_dict = SAMPLE_DICT_ADT,
         vdj_dict = SAMPLE_DICT_VDJ
     log:
-        "{results}/logs/{sample}_count"
+        "{results}/logs/count/{sample}_count"
     threads:
         1
     run:
@@ -337,7 +337,7 @@ rule create_aggr_csv:
         max_jobs = MAX_JOBS,
         vdj_dict = SAMPLE_DICT_VDJ
     log:
-        "{results}/logs/{group}_aggr_csv"
+        "{results}/logs/aggr_csv/{group}_aggr_csv"
     threads:
         1
     run:
@@ -381,7 +381,7 @@ rule run_aggr:
         results  = RESULTS
 
     log:
-        "{results}/logs/{group}_aggr"
+        "{results}/logs/run_aggr/{group}_aggr"
     threads:
         1
     run:
