@@ -24,7 +24,7 @@ rule merge_fastqs:
         adt_dict = SAMPLE_DICT_ADT,
         vdj_dict = SAMPLE_DICT_VDJ
     log:
-        "{results}/logs/{sample}_merge_fastqs"
+        "{results}/logs/merge_fastqs/{sample}_merge_fastqs"
     threads:
         1
     run:
@@ -156,7 +156,7 @@ rule create_sample_csv:
         adt_dict = SAMPLE_DICT_ADT,
         vdj_dict = SAMPLE_DICT_VDJ
     log:
-        "{results}/logs/{sample}_csv"
+        "{results}/logs/sample_csv/{sample}_csv"
     threads:
         1
     run:
@@ -259,7 +259,7 @@ rule cellranger_count:
         adt_dict = SAMPLE_DICT_ADT,
         vdj_dict = SAMPLE_DICT_VDJ
     log:
-        "{results}/logs/{sample}_count"
+        "{results}/logs/count/{sample}_count"
     threads:
         1
     run:
@@ -337,20 +337,20 @@ rule create_aggr_csv:
         max_jobs = MAX_JOBS,
         vdj_dict = SAMPLE_DICT_VDJ
     log:
-        "{results}/logs/{group}_aggr_csv"
+        "{results}/logs/aggr_csv/{group}_aggr_csv"
     threads:
         1
     run:
         def _aggr_multi(use_samples, group_csv, result_dir):
             with open(group_csv, "w") as csv_file:
-                csv_file.write("library_id,library_outs\n")
+                csv_file.write("sample_id,library_outs\n")
                 for sample in use_samples:
                     out_dir = os.path.join(result_dir, sample, "outs")
                     csv_file.write("%s,%s\n" % (sample, out_dir))
 
         def _aggr_count(use_samples, group_csv, result_dir):
             with open(group_csv, "w") as csv_file:
-                csv_file.write("library_id,molecule_h5\n")
+                csv_file.write("sample_id,molecule_h5\n")
                 for sample in use_samples:
                     h5_file = os.path.join(result_dir, sample, "outs",
                         "molecule_info.h5")
@@ -358,7 +358,7 @@ rule create_aggr_csv:
         if(wildcards.group != "none"):
             use_samples = AGGR_GROUP[wildcards.group]
             group_csv = os.path.join(params.results, wildcards.group + "_aggr.csv")
-            if params.vdj_dict[wildcards.sample]:
+            if params.vdj_dict[use_samples[0]]:
                 _aggr_multi(use_samples, group_csv, params.results)
             else:
                 _aggr_count(use_samples, group_csv, params.results)
@@ -381,7 +381,7 @@ rule run_aggr:
         results  = RESULTS
 
     log:
-        "{results}/logs/{group}_aggr"
+        "{results}/logs/cellranger_aggr/{group}_aggr"
     threads:
         1
     run:
@@ -391,8 +391,8 @@ rule run_aggr:
                 cd {params.results}
                 
                 cellranger aggr \
-                --id={wildcards.group} \
-                --csv={params.csv}
+                    --id={wildcards.group} \
+                    --csv={params.csv}
                 '''
                 )
         # Write output file
