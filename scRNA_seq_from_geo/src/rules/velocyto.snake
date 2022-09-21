@@ -1,0 +1,65 @@
+# Function for getting groups of velocyto output
+def _get_input(wildcards):
+    results_list = []
+    if VELOCYTO_GROUP != "none":
+        for i in VELOCYTO_GROUP[wildcards.group]:
+            results_list.append(wildcards.results + "/logs/" + 
+                i + "_velocyto_done.out")
+    return(results_list)
+
+def _get_velo_input(wildcards):
+    results_list = []
+    if VELOCYTO_GROUP != "none":
+        for i in VELOCYTO_GROUP[wildcards.group]:
+            results_list.append(wildcards.results + "/" + i + "/velocyto/" + 
+                i + ".loom")
+    return(results_list)
+
+
+
+# Run velocyto
+rule run_velocyto:
+    input:
+        "{results}/logs/{sample}_count_done.out"
+    output:
+        "{results}/logs/{sample}_velocyto_done.out"
+    params:
+        job_name = "velocyto",
+        memory   = "select[mem>60] rusage[mem=60]",
+        genome   = GENOME
+    log:
+        "{results}/logs/{sample}_velocyto"
+    threads:
+        1
+    run:
+        shell(
+            """
+            reference={params.genome}/genes/genes.gtf
+            sampleFolder={wildcards.results}/{wildcards.sample}
+
+            velocyto run10x $sampleFolder $reference
+            """
+        )
+        # Write output file
+        with open(output[0], "w") as out:
+            out.write("done\n")
+
+rule combine_loom:
+    input:
+        _get_input
+    output:
+        "{results}/logs/{group}_velocyto_combined.out"
+    params:
+        job_name = "combine_loom",
+        memory = "select[mem>10] rusage[mem=10]",
+        velocyto_input = _get_velo_input,
+        out_file = "{results}/{group}_combined/velocyto/combined_{group}.loom"
+    log:
+        "{results}/logs/{group}_combine_loom"
+    run:
+        if wildcards.group != "none":
+            import loompy
+            print(params.velocyto_input)
+            loompy.combine(params.velocyto_input, params.out_file, key="Accession")
+        with open(output[0], "w") as out:
+            out.write("done\n")

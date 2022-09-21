@@ -1,0 +1,409 @@
+# ===== Snakemake rules for running the 10x Cell Ranger pipeline ===============
+
+import os 
+import re
+import glob
+
+# Merge fastqs and create symlinks =============================================
+# This rule will either merge multiple fastqs into a single file or create a 
+# symlink to the original fastq. If a comma separated list of sample names is 
+# provided all fastqs that begin with either name will be merged into one file 
+# that has a new name. If only a single name is provided a symlink will be 
+# created for each fastq that begins with the name.
+
+rule merge_fastqs:
+    input:
+        expand(
+            "{{results}}/raw_fastqs/{run}/{{sample}}_fastqs_done.txt",
+            run = RUNS
+            )
+    output:
+        "{results}/logs/merged_fastqs/{sample}_merge_fastqs_done.out"
+    params:
+        job_name = "merge_fastqs",
+        memory   = "select[mem>4] rusage[mem=4]",
+        raw_data = RAW_DATA_DICT,
+        fq_dir   = FASTQ_DIR,
+        fq_info  = FASTQ_INFO,
+        rna_dict = SAMPLE_DICT_RNA,
+        adt_dict = SAMPLE_DICT_ADT,
+        vdj_dict = SAMPLE_DICT_VDJ,
+        runs     = RUNS
+    log:
+        "{results}/logs/merged_fastqs/{sample}_merge_fastqs"
+    threads:
+        1
+    run:
+        # Function to retrieve fastq paths
+        def _get_fq_paths(sample, read, raw_dir):
+            path_list = []
+            raw_dir = raw_dir.split(",")
+            for directory in raw_dir:
+                _check_path(directory)
+                fq_paths = os.path.join(directory, sample + "*" + read + "*.fastq.gz")
+                fq_paths = glob.glob(os.path.abspath(fq_paths))
+                if fq_paths:
+                    if re.search(sample + "\.*_[0-9]" + FASTQ_INFO, fq_paths[0]):
+                        path_dict = {}
+                        fastq_count = 0
+                        for x in fq_paths:
+                            fastq_num = re.search("_[0-9]" + FASTQ_INFO, x).group(0)[1]
+                            path_dict[int(fastq_num) - 1] = fastq_count
+                            fastq_count += 1
+                        [path_list.append(fq_paths[path_dict[i]]) for i in range(len(path_dict))]
+                    else:
+                        [path_list.append(x) for x in fq_paths]
+
+            if not path_list:
+                sys.exit("ERROR: No fastqs found for " + sample + ".") 
+                          
+            return path_list
+
+        # Function to build merge command
+        def _build_merge_cmd(path_list, merged_path):
+            cmds = ""
+
+            for fq_path in path_list:
+                cmds += " " + fq_path
+
+            cmds = "cat" + cmds + " > " + merged_path
+
+            return cmds
+
+        # Function to merge fastq files or create symlink
+        def _merge_fastqs(sample, merged_name, raw_dir):
+
+            # Merge fastqs for each read or create a symlink
+            for read in ["_R1_", "_R2_", "_I1_"]:
+                names = sample.split(",")
+                # Create list of commands for creating symlinks
+                if len(names) == 1:
+                    path_list = _get_fq_paths(names[0], read, raw_dir)
+
+                    cmd_list = []
+                    for x in path_list:
+                        if re.search("_[0-9]" + params.fq_info, x):
+                            fastq_tail = re.search("_[0-9]" + params.fq_info, x).group(0)
+                        else:
+                            fastq_tail = re.search(params.fq_info, x).group(0)
+                        merged_path = os.path.join(params.fq_dir, merged_name + fastq_tail)
+                        cmd_list += ["ln -s " + x + " " + merged_path]
+
+                # Create list of commands for merging fastqs
+                else:
+                    path_dict = {}
+
+                    for name in names:
+                        path_list = []
+                        [path_list.append(x) for x in _get_fq_paths(name, read, raw_dir)]
+                        path_dict[name] = path_list
+                    path_dict
+                    path_list = list(zip(path_dict[names[0]], path_dict[names[1]]))
+                    cmd_list = []
+                    for i in path_list:
+                        if re.search("_[0-9]" + params.fq_info, i[0]):
+                            fastq_tail = re.search("_[0-9]" + params.fq_info, i[0]).group(0)
+                        else:
+                            fastq_tail = re.search(params.fq_info, i[0]).group(0)                        
+                        merged_path = os.path.join(params.fq_dir, merged_name + fastq_tail)
+
+                        cmd_list.append(_build_merge_cmd(i, merged_path))
+
+
+                for cmd in cmd_list:
+                    subprocess.run(cmd, shell = True)
+
+        # Find rna, adt, vdj, and data dir for the sample
+        # rna = params.rna_dict[wildcards.sample]
+        # adt = params.adt_dict[wildcards.sample]
+        # vdj = params.vdj_dict[wildcards.sample]
+        #raw_dir = params.raw_data[wildcards.sample]
+        raw_dir = [os.path.join(wildcards.results, "raw_fastqs", i) for i in params.runs]
+        print("data_dir")
+        print(raw_dir)
+
+        sample_name = wildcards.sample + "_GEX"
+        # Create symlinks for gene expression fastqs
+        for i in range(len(raw_dir)):
+            merged_names_gex = sample_name + "_" + str(i + 1)
+            _merge_fastqs(sample_name, merged_names_gex, raw_dir[i])
+
+        # # # Merge CITE-seq and cell hashing fastqs
+        # # if adt:
+        # #     merged_names_adt = wildcards.sample + "_FB"
+
+        # #     _merge_fastqs(adt, merged_names_adt, raw_dir)
+
+        # # # Create symlinks for VDJ fastqs
+        # # if vdj:
+        # #     merged_names_vdj = wildcards.sample + "_VDJ"
+        # #     _merge_fastqs(vdj, merged_names_vdj, raw_dir)
+
+        # Write output file
+        with open(output[0], "w") as out:
+            out.write("done\n")
+
+# Create sample csv ============================================================
+# This rule creates a csv file used by cellranger count that contains the path 
+# to the fastq directory, each fastq prefix, and the library type.
+
+rule create_sample_csv:
+    input:
+        "{results}/logs/merged_fastqs/{sample}_merge_fastqs_done.out"
+    output:
+        "{results}/logs/create_csv/{sample}_csv_done.out"
+    params:
+        job_name = "sample_csv",
+        memory   = "select[mem>4] rusage[mem=4]",
+        results  = RESULTS,
+        fq_dir   = FASTQ_DIR,
+        gene_ref = GENOME,
+        adt_ref  = ADT_REF,
+        vdj_ref  = VDJ_REF,
+        fq_info  = FASTQ_INFO,
+        rna_dict = SAMPLE_DICT_RNA,
+        adt_dict = SAMPLE_DICT_ADT,
+        vdj_dict = SAMPLE_DICT_VDJ
+    log:
+        "{results}/logs/create_csv/{sample}_csv"
+    threads:
+        1
+    run:
+        # Function to create sample csv file for cellranger count
+        def _create_sample_csv_count(sample_name, lib_type, sample_csv,
+            fq_dir):
+            fq_path = os.path.join(fq_dir, sample_name + "*.fastq.gz")
+            fastqs  = glob.glob(fq_path)
+            R1_fqs  = [x for x in fastqs if "_R1_" in x]
+
+            # Trim fastq names
+            R1_fqs = [os.path.basename(x) for x in R1_fqs]
+            R1_fqs = [re.sub(params.fq_info, "", x) for x in R1_fqs]
+            R1_fqs = set(R1_fqs)
+
+            # Create sample csv
+            if not os.path.isfile(sample_csv):
+                with open(sample_csv, "w") as csv:
+                    csv.write("fastqs,sample,library_type\n")
+
+            with open(sample_csv, "a") as csv:
+                for fq in R1_fqs:
+                    csv.write("{},{},{}\n".format(fq_dir, fq, lib_type))
+
+        def _create_sample_csv_multi(sample_csv, sample_names, fq_dir):
+            with open(sample_csv, "w") as csv:
+                csv.write("[gene-expression]\n")
+                csv.write("reference," + params.gene_ref + "\n")
+                if params.adt_dict[sample_names]:
+                    csv.write("[feature]\n")
+                    csv.write("reference," + params.adt_ref + "\n")
+                csv.write("[vdj]\n")
+                csv.write("reference," + params.vdj_ref + "\n")
+                csv.write("[libraries]\n")
+                csv.write("fastq_id,fastqs,feature_types\n")
+                rna_fastqs = _get_fastqs(sample_names + "_GEX")
+                for fastq in rna_fastqs:
+                    csv.write("{},{},{}\n".format(fastq, fq_dir, "Gene Expression"))
+                if params.adt_dict[sample_names]:
+                    adt_fastqs = _get_fastqs(sample_names + "_FB")
+                    for fastq in adt_fastqs:
+                        csv.write("{},{},{}\n".format(fastq, fq_dir, "Antibody Capture"))
+                vdj_fastqs = _get_fastqs(sample_names + "_VDJ")
+                for fastq in vdj_fastqs:
+                    csv.write("{},{},{}\n".format(fastq, fq_dir, "VDJ"))
+
+        def _get_fastqs(sample_id):
+            fq_path = os.path.join(params.fq_dir, sample_id + "*.fastq.gz")
+            fastqs  = glob.glob(fq_path)
+            R1_fqs  = [x for x in fastqs if "_R1_" in x]
+
+            # Trim fastq names
+            R1_fqs = [os.path.basename(x) for x in R1_fqs]
+            R1_fqs = [re.sub(params.fq_info, "", x) for x in R1_fqs]
+            R1_fqs = set(R1_fqs)
+            return(R1_fqs)
+
+        if params.vdj_dict[wildcards.sample]:
+            # Create sample csv file for cellranger multi
+            sample_csv = os.path.join(params.results, wildcards.sample + "_multi.csv")
+            if os.path.isfile(sample_csv):
+                os.remove(sample_csv)
+            _create_sample_csv_multi(sample_csv, wildcards.sample, params.fq_dir)
+        else:
+            # Create sample csv file for cellranger count
+            sample_csv = os.path.join(params.results, wildcards.sample + "_count.csv")
+            rna_id     = wildcards.sample + "_GEX"
+        
+            if os.path.isfile(sample_csv):
+                os.remove(sample_csv)
+            if params.adt_dict[wildcards.sample]:
+                adt_id = wildcards.sample + "_FB"
+                _create_sample_csv_count(adt_id, "Antibody Capture", sample_csv,
+                    params.fq_dir)
+    
+            _create_sample_csv_count(rna_id, "Gene Expression", sample_csv,
+                params.fq_dir)
+
+        # Write output file
+        with open(output[0], "w") as out:
+            out.write("done\n")
+
+# Run cellranger count =========================================================
+# This rule runs cellranger count using csv files from create_sample_csv. If
+# vdj samples are present it will run cellranger multi. If vdj samples are not
+# present, it will run cellranger count
+
+rule cellranger_count:
+    input:
+        "{results}/logs/create_csv/{sample}_csv_done.out"
+    output:
+        "{results}/logs/cellranger/{sample}_count_done.out"
+    params:
+        job_name = "count",
+        memory   = "select[mem>10] rusage[mem=10]",
+        genome   = GENOME,
+        lsf      = LSF_TEMPLATE,
+        max_jobs = MAX_JOBS,
+        barcodes = ADT_REF,
+        adt_dict = SAMPLE_DICT_ADT,
+        vdj_dict = SAMPLE_DICT_VDJ
+    log:
+        "{results}/logs/cellranger/{sample}_count"
+    threads:
+        1
+    run:
+        # Run cellranger multi for vdj (CITE-seq) and gene expression
+        if params.vdj_dict[wildcards.sample]:
+            shell(
+                """
+                sample_csv={wildcards.sample}_multi.csv
+
+                cd {wildcards.results}
+
+                cellranger multi \
+                    --id={wildcards.sample} \
+                    --csv=$sample_csv \
+                    --jobmode={params.lsf} \
+                    --maxjobs={params.max_jobs}
+                """
+                )
+        # Run cellranger count for CITE-seq and gene expression
+        elif params.adt_dict[wildcards.sample]:
+            shell(
+                """
+                sample_csv={wildcards.sample}_count.csv
+                ab_csv={params.barcodes}
+
+                cd {wildcards.results}
+
+                cellranger count \
+                    --id={wildcards.sample} \
+                    --libraries=$sample_csv \
+                    --feature-ref=$ab_csv \
+                    --transcriptome={params.genome} \
+                    --jobmode={params.lsf} \
+                    --maxjobs={params.max_jobs}
+                """
+            )
+
+        # Run cellranger count just for gene expression
+        else:
+            shell(
+                """
+                sample_csv={wildcards.sample}_count.csv
+
+                cd {wildcards.results}
+
+                cellranger count \
+                    --id={wildcards.sample} \
+                    --libraries=$sample_csv \
+                    --transcriptome={params.genome} \
+                    --jobmode={params.lsf} \
+                    --maxjobs={params.max_jobs}
+                """
+            )
+
+        # Write output file
+        with open(output[0], "w") as out:
+            out.write("done\n")
+
+# Create multi csv =========================================================
+# This rule creates a csv file to aggregate the counts from a multi run
+
+rule create_aggr_csv:
+    input:
+        expand(
+           "{results}/logs/cellranger/{sample}_count_done.out",
+            results = RESULTS, sample = SAMPLES
+        )
+    output:
+        "{results}/logs/{group}_csv_aggr_done.out"
+    params:
+        job_name = "aggr_csv",
+        memory   = "select[mem>4] rusage[mem=4]",
+        results  = RESULTS,
+        lsf      = LSF_TEMPLATE,
+        max_jobs = MAX_JOBS,
+        vdj_dict = SAMPLE_DICT_VDJ
+    log:
+        "{results}/logs/aggr_csv/{group}_aggr_csv"
+    threads:
+        1
+    run:
+        def _aggr_multi(use_samples, group_csv, result_dir):
+            with open(group_csv, "w") as csv_file:
+                csv_file.write("library_id,library_outs\n")
+                for sample in use_samples:
+                    out_dir = os.path.join(result_dir, sample, "outs")
+                    csv_file.write("%s,%s\n" % (sample, out_dir))
+
+        def _aggr_count(use_samples, group_csv, result_dir):
+            with open(group_csv, "w") as csv_file:
+                csv_file.write("library_id,molecule_h5\n")
+                for sample in use_samples:
+                    h5_file = os.path.join(result_dir, sample, "outs",
+                        "molecule_info.h5")
+                    csv_file.write("%s,%s\n" % (sample, h5_file))
+        if(wildcards.group != "none"):
+            use_samples = AGGR_GROUP[wildcards.group]
+            group_csv = os.path.join(params.results, wildcards.group + "_aggr.csv")
+            if params.vdj_dict[wildcards.sample]:
+                _aggr_multi(use_samples, group_csv, params.results)
+            else:
+                _aggr_count(use_samples, group_csv, params.results)
+        # Write output file
+        with open(output[0], "w") as out:
+            out.write("done\n")
+
+
+rule run_aggr:
+    input:
+        "{results}/logs/{group}_csv_aggr_done.out"
+    output:
+        "{results}/logs/{group}_cellranger_aggr_done.out"
+    params:
+        job_name = "{group}_cellranger_aggr",
+        memory   = "select[mem>4] rusage[mem=4]",
+        csv      = "{results}/{group}_aggr.csv",
+        lsf      = LSF_TEMPLATE,
+        max_jobs = MAX_JOBS,
+        results  = RESULTS
+
+    log:
+        "{results}/logs/aggr/{group}_aggr"
+    threads:
+        1
+    run:
+        if wildcards.group != "none":
+            shell(
+                '''
+                cd {params.results}
+                
+                cellranger aggr \
+                --id={wildcards.group} \
+                --csv={params.csv}
+                '''
+                )
+        # Write output file
+        with open(output[0], "w") as out:
+            out.write("done\n")

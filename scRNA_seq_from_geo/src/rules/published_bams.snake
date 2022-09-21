@@ -1,0 +1,69 @@
+def _get_bams(wildcards):
+    bam_file = DOWNLOAD_PATH[wildcards.run][wildcards.sample]
+    return bam_file[0]
+
+def _get_filename(wildcards):
+    bam_name = DOWNLOAD_PATH[wildcards.run][wildcards.sample][0].split("/")[-1]
+    bam_path = os.path.join(wildcards.results, "downloaded_bams", bam_name)
+    return bam_path
+
+rule download_bams:
+    output:
+        "{results}/downloaded_bams/{sample}_{run}_10x.bam"
+    params:
+        job_name = "download_bams",
+        memory   = "select[mem>4] rusage[mem=4]",
+        bam_file = _get_bams,
+        bam_name = _get_filename
+    log:
+        "{results}/logs/download_bams/{sample}_{run}"
+    threads:
+        1
+    shell:
+        """
+        # use wget -O is slow, just moving the file is faster
+        cd {wildcards.results}/downloaded_bams
+        wget {params.bam_file}
+        mv {params.bam_name} {output}
+        """
+
+# Run bam to fastq - 
+rule bamtofastq:
+    input:
+        "{results}/downloaded_bams/{sample}_{run}_10x.bam"
+    output:
+        "{results}/raw_fastqs/{run}/{sample}_fastqs_done.txt"
+    params:
+        job_name = "bamtofastq",
+        memory   = "select[mem>4] rusage[mem=4]"
+    log:
+        "{results}/logs/bamtofastq/{sample}_{run}"
+    threads:
+        6
+    run:
+        temp_dir = os.path.join(wildcards.results, "raw_fastqs", wildcards.run, wildcards.sample)
+        
+        # Run bam to fastq
+        shell(
+            """
+            bamtofastq --nthreads {threads} {input} {temp_dir}
+            """
+            )
+
+        # Move and rename files so it's easier to find them and cellranger can run them
+        fastq_path = os.path.join(wildcards.results, "raw_fastqs",
+            wildcards.run, wildcards.sample, "*", "*.fastq.gz")
+
+        fastq_files = glob.glob(os.path.abspath(fastq_path))
+
+        for i in fastq_files:
+            fastq_name = i.split("/")[-1]
+            new_fastq = re.sub("bamtofastq", wildcards.sample + "_GEX", fastq_name)
+            new_path = os.path.join(wildcards.results, "raw_fastqs", wildcards.run, new_fastq)
+            os.rename(i, new_path)
+
+        # Remove the temp dir
+        shutil.rmtree(temp_dir)
+
+        with open(output[0], "w") as out_file:
+            out_file.write("done\n")

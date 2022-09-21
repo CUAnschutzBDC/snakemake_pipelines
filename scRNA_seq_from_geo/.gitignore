@@ -1,0 +1,9 @@
+*raw_data/
+.*
+!.gitignore
+!.gitattributes
+results/*
+logs
+.Rproj.user
+src/scripts/merge_all/0*
+!src/scripts/merge_all/01_initial_processing.R
