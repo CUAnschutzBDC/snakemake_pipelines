@@ -1,0 +1,1074 @@
+---
+title: "STOC SC Analysis"
+author: "Kristen Wells"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    highlight: "tango"
+    df_print: "paged"
+    code_folding: "hide"
+    self_contained: true
+params:
+  genes:
+    value:
+      - "KRT17"
+      - "STMN1"
+      - "IFITM2"
+      - "TPSAB1" # expressed in mast cells (GeneCards)
+      - "CPA3" # Also related to mast cells (GeneCards)
+      - "TPSB2" # Also related to mast cells (GeneCards)
+      - "GATA2" # "GATA2 is critical for mast cell differentiation and maintenance" JI paper
+      - "TPSD1" # Mast Cell Tryptase (GeneCards)
+      - "HPGDS" # defined functions in the immune system and mast cells (GeneCards)
+      - "HDC" # hematopoietic cell lineages the gene is expressed only in mast cells
+      - "LYZ" #Monocyte gene https://doi.org/10.1038/s41467-018-04985-0 cdc signature 10.1126/science.aah4573
+      - "TOP2A"
+      - "MKI67"
+      - "KRT1" # MTECIII marker from ref
+      - "PDGFRA" # FB marke from ref
+      - "KIT" # Mast cell marker
+  adts:
+    value:
+      - "ADT-CD205"
+      - "ADT-CD326"
+      - "ADT-CD140a"
+      - "ADT-CD52"
+      - "ADT-CD8A"
+      - "ADT-CD4"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  message = F, 
+  warning = F,
+  comment = ""
+)
+
+knitr::opts_knit$set(root.dir = "/Users/wellskr/Documents/Analysis/Holger_Russ/mtec_organoid_multi")
+```
+This document begins the analysis of the STOC data. It loads in the data,
+demultiplexes using the hastagging barcodes, calls and removes doublets
+using a combination of `doubletFinder` and cell hashtagging, and performs
+initial processing using both gene expression data and surface protein data.
+
+
+```{r, include=FALSE}
+seurat4 <- TRUE
+HTO <- TRUE
+list.of.cran.packages <- c("ggplot2")
+if(seurat4){
+  if(!"Seurat" %in% installed.packages()[, "Package"]){
+      remotes::install_github("satijalab/seurat", ref = "release/4.0.0")
+  }
+} else{
+  list.of.cran.packages <- c("Seurat", list.of.cran.packages)
+}
+
+if(!"DoubletFinder" %in% installed.packages()[, "Package"]){
+  remotes::install_github('chris-mcginnis-ucsf/DoubletFinder')
+}
+
+new.packages <- list.of.cran.packages[!(list.of.cran.packages %in%
+                                     installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+```
+
+```{r, include = FALSE}
+library(ggplot2)
+library(Seurat)
+library(tidyr)
+library(cowplot)
+library(dplyr)
+library(DoubletFinder)
+library(clustifyr)
+library(knitr)
+library(tidyverse)
+library(LaCroixColoR)
+library(harmony)
+```
+
+```{r "Functions"}
+source("src/scripts/functions.R")
+```
+
+```{r "Set variables and theme"}
+# Set theme
+ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
+
+normalization_method <- "log" # can be SCT or log
+
+if(normalization_method == "SCT"){
+  SCT <- TRUE
+  seurat_assay <- "SCT"
+} else {
+  SCT <- FALSE
+  seurat_assay <- "RNA"
+}
+
+# Set this after running first steps of finding doublets
+pK <- 0.04
+
+first_run <- FALSE
+```
+
+
+```{r "Load in the data"}
+
+base_dir <- "/Users/wellskr/Documents/Analysis/Holger_Russ/mtec_organoid_multi/"
+
+save_dir <- file.path(base_dir, "results", "R_analysis")
+data_path <- file.path(base_dir,
+  "results", "Hashtag_STOC/", "outs", "count", "filtered_feature_bc_matrix")
+sample <- "Hashtag_STOC"
+
+# Information for cell mapping
+ref_dir <-
+  "/Users/wellskr/Documents/Analysis/Holger_Russ/mtec_organoid_multi/files/thymus_annotated_matrix_files/"
+
+ref_mat <- read.csv(paste0(ref_dir, "average_cluster_expression.csv"),
+                    header = TRUE, row.names = 1)
+
+
+```
+
+```{r,results="hide"}
+stoc_data <- create_seurat_object(sample = sample,
+                                  count_path = paste0(base_dir, "results"),
+                                  ADT = TRUE, hashtag = TRUE
+                                  )
+```
+
+# Quality Control {.tabset}
+
+## Count violin plots
+First we look at the violin plots for the counts of features, reads,
+surface protein, and mitochondiral percent. Overall, these look good. I will
+set cutoffs to 10% mitochondrial reads, between 200 and 6,000 RNA features
+and less than 10,000 ADTs based on these plots.
+```{r, fig.width=8, fig.height=8}
+# Mitochondrial percent
+stoc_data[["percent.mt"]] <- PercentageFeatureSet(stoc_data,
+                                                  pattern = "^MT-")
+
+# Plot to determine appropriate cutoffs
+rna_qual <- VlnPlot(stoc_data,
+                    features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                    ncol = 3)
+
+adt_qual <- VlnPlot(stoc_data, features = c("nCount_ADT", "nFeature_ADT"))
+
+plot_grid(rna_qual, adt_qual,
+          nrow = 2, ncol = 1,
+          align = "hv",
+          axis = "tb")
+```
+```{r "save qual plots", include = FALSE}
+pdf(paste0(save_dir, "images/quality_plots.pdf"))
+rna_qual
+adt_qual
+dev.off()
+
+```
+
+```{r "remove outliers and normalize", results = "hide"}
+# Remove outliers
+stoc_data <- subset(x = stoc_data, subset = percent.mt < 10 &
+      nFeature_RNA > 200 & nFeature_RNA < 6000 & nCount_ADT < 10000)
+
+
+  # Single Cell Transform normalization
+stoc_data <- SCTransform(stoc_data, vars.to.regress = "percent.mt",
+                         verbose = FALSE)
+
+  # Default normalization
+DefaultAssay(stoc_data) <- "RNA"
+stoc_data <- NormalizeData(stoc_data) %>% 
+  FindVariableFeatures(selection.method = "vst") %>%
+  ScaleData()
+
+```
+
+## Demultiplex Hashtags
+We can use the hashtags to demultiplex the samples. We can then visualize how
+many cells had each hashtag.
+```{r "Demultiplex", results ="hide", fig.width=8, fig.height=16}
+stoc_data <- HTODemux(stoc_data, assay = "HTO", positive.quantile = 0.90)
+ridge_p <- RidgePlot(stoc_data, assay = "HTO",
+                     features = rownames(stoc_data[["HTO"]])[1:2], ncol = 2)
+```
+
+```{r}
+print(table(stoc_data$HTO_classification))
+```
+
+```{r "plot demultiplex", fig.width=8, fig.height=16}
+scatter_p <- FeatureScatter(stoc_data,
+                            feature1 = "hto_Hashtag-STOC-86-008",
+                            feature2 = "hto_Hashtag-STOC-86-009")
+Idents(stoc_data) <- "HTO_classification.global"
+vln_p <- VlnPlot(stoc_data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                 pt.size = 0.1, log = TRUE)
+
+
+plot_grid(ridge_p, scatter_p, vln_p,
+          nrow = 3, ncol = 1,
+          align = "hv",
+          axis = "tb")
+```
+```{r "save hto plots", include = FALSE}
+pdf(paste0(save_dir, "images/HTO_plots.pdf"))
+ridge_p
+scatter_p
+vln_p
+dev.off()
+
+```
+
+```{r "save object", include = FALSE}
+if(first_run){
+  saveRDS(stoc_data, file = paste0(save_dir, "stoc_start.rds"))
+  # Remove "negatives"
+  Idents(stoc_data) <- "HTO_classification.global"
+  stoc_data <- subset(x = stoc_data, idents = c("Singlet", "Doublet"))
+  DefaultAssay(stoc_data) <- seurat_assay
+  stoc_data <- PCA_dimRed(stoc_data, assay = seurat_assay)
+  umap_data <- group_cells(stoc_data, assay = seurat_assay)
+
+  stoc_data <- umap_data[[1]]
+
+
+  ## pK Identification (ground-truth)-------------------------------------------
+  sweep.res.stoc_data <- paramSweep_v3(stoc_data, PCs = 1:10, sct = SCT)
+  gt.calls <- stoc_data@meta.data[rownames(sweep.res.stoc_data[[1]]),
+                                  "HTO_classification.global"]
+  gt.calls <- as.factor(gt.calls)
+  sweep.stats_organoid <- summarizeSweep(sweep.res.stoc_data, GT = TRUE,
+                                         GT.calls = gt.calls)
+  bcmvn_organoid <- find.pK(sweep.stats_organoid)
+
+  max_AUC <- max(bcmvn_organoid$MeanAUC)
+  max_BC <- max(bcmvn_organoid$MeanBC)
+  max_BCmetric <- max(bcmvn_organoid$BCmetric)
+  # Could use pK = 0.08 or pk = 0.19
+  # 0.08 is closer to the max of the AUC
+  pK <- 0.005
+  ## Homotypic Doublet Proportion Estimate--------------------------------------
+  annotations <- stoc_data$seurat_clusters
+  homotypic.prop <- modelHomotypic(annotations)
+  nExp_poi <- round(0.039*nrow(stoc_data@meta.data))  
+  nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+
+
+  ## Find pK from bcmvn output, pN selection is less important------------------
+
+  stoc_data <- doubletFinder_v3(stoc_data, PCs = 1:10, pN = 0.25,
+                                pK = pK, nExp = nExp_poi.adj,
+                                reuse.pANN = FALSE, sct = SCT)
+
+
+
+  saveRDS(stoc_data, paste0(save_dir, "stoc_doublet.rds"))
+}
+
+```
+
+
+```{r "remove doublets"}
+# Remove doublets
+stoc_data <- readRDS(paste0(save_dir, "stoc_doublet.rds"))
+Idents(stoc_data) <- "DF.classifications_0.25_0.005_120"
+stoc_data <- subset(x = stoc_data, idents = "Singlet")
+Idents(stoc_data) <- "HTO_classification.global"
+stoc_data <- subset(x = stoc_data, idents = "Singlet")
+```
+
+# PCA {.tabset}
+We can perform PCA in multiple ways with this data set. We can use either the
+gene expression data or the surface protein data. Both are shown below.
+
+## Gene expression
+This is PCA performed on the surface protein data.
+A. the top genes associated with PC1 and PC2
+B. PCA colored by processing group
+C. PCA colored by percent mt
+D. PCA colored by the number of features
+E. PCA colored by the number of UMIs
+F. PCA colored by demultiplexed sample
+```{r "PCA of gene expression"}
+stoc_data <- PCA_dimRed(stoc_data, assay = seurat_assay)
+
+RNA_plots <- plot_PCA(HTO = TRUE, assay = seurat_assay,
+                      sample_object = stoc_data)
+
+
+```
+
+```{r "PCA plots for gene expression", fig.width=20, fig.height=16}
+
+plot_grid(RNA_plots$pca_loadings, labels = "A")
+plot_grid(RNA_plots$pca_plot[[1]], RNA_plots$mito_plot[[1]],
+          RNA_plots$nfeature_plot[[1]], RNA_plots$ncount_plot[[1]],
+          nrow = 2, ncol = 2,
+          labels = c("B", "C", "D", "E"),
+          align = "vh",
+          axis = "tb")
+if(HTO){
+  plot_grid(RNA_plots$hto_pca_plot[[1]], labels = "F")
+}
+```
+We can use the elbow and jackstraw plots below to determine the ideal number of PCs to use
+for the next steps.
+```{r "Elbow and jackstraw for gene expression", fig.width=12, fig.height=4}
+if(SCT){
+  plot_grid(RNA_plots$elbow,
+            labels = c("A"))
+} else {
+  plot_grid(RNA_plots$jackstraw, RNA_plots$elbow,
+            labels = c("A", "B"),
+            align = "h",
+            axis = "tb")
+}
+
+
+```
+
+```{r "save rna pca plots", include = FALSE}
+pdf(paste0(save_dir, "images/RNA_pca.pdf"))
+RNA_plots
+dev.off()
+
+```
+
+## Surface protein
+This is PCA performed on the surface protein data.
+A. the top genes associated with PC1 and PC2
+B. PCA colored by processing group
+C. PCA colored by percent mt
+D. PCA colored by the number of features
+E. PCA colored by the number of UMIs
+F. PCA colored by demultiplexed sample
+```{r "PCA of surface protein"}
+stoc_data <- PCA_dimRed(stoc_data, assay = "ADT")
+
+ADT_plots <- plot_PCA(HTO = TRUE, assay = "ADT", sample_object = stoc_data)
+
+
+```
+
+```{r "PCA plots for surface protein", fig.width=20, fig.height=16}
+
+plot_grid(ADT_plots$pca_loadings, labels = "A")
+plot_grid(ADT_plots$pca_plot[[1]], ADT_plots$mito_plot[[1]],
+          ADT_plots$nfeature_plot[[1]], ADT_plots$ncount_plot[[1]],
+          nrow = 2, ncol = 2,
+          labels = c("B", "C", "D", "E"),
+          align = "vh",
+          axis = "tb")
+if(HTO){
+  plot_grid(ADT_plots$hto_pca_plot[[1]], labels = "F")
+}
+```
+We can use the elbow plot below to determine the ideal number of PCs to use
+for the next steps.
+```{r "Elbow and jabkstraw for surface protein", fig.width=12, fig.height=4}
+plot_grid(ADT_plots$elbow,
+          labels = c("A"))
+
+```
+
+```{r "save rna adt plots", include = FALSE}
+pdf(paste0(save_dir, "images/RNA_pca.pdf"))
+ADT_plots
+dev.off()
+
+```
+
+# UMAP plots {.tabset}
+Like the PCA, we can perform UMAP using the features from the gene expression or
+the surface protein. We can also use a method to combine both surface protein
+and gene expression to inform the UMAP.
+
+## Gene expression
+UMAP based on gene expression alone
+A. UMAP colored by clusters based on gene expression
+B. UMAP colored by processing group
+C. UMAP colored by demultiplexed sample
+```{r "Gene expression UMAP", results = "hide", fig.height=8, fig.width=8}
+umap_data <- group_cells(stoc_data, "STOC1", save_dir, nPCs = 27,
+  resolution = 0.6, assay = seurat_assay, HTO = TRUE)
+
+stoc_data <- umap_data$object
+
+stoc_plots <- umap_data$plots
+
+plot_grid(stoc_plots[[1]], stoc_plots[[2]],
+          labels = c("A", "B"),
+          align = "h",
+          axis = "tb")
+
+if(HTO){
+  plot_grid(stoc_plots[[3]],
+            labels = "C")
+}
+```
+
+## Surface protein
+UMAP based on surface protein alone
+A. UMAP colored by clusters based on gene expression
+B. UMAP colored by processing group
+C. UMAP colored by demultiplexed sample
+```{r "Surface protein UMAP", results = "hide", fig.height=4, fig.width=8}
+umap_data <- group_cells(stoc_data, "STOC1", save_dir, nPCs = 16,
+  resolution = 0.6, assay = "ADT", HTO = TRUE)
+
+stoc_data <- umap_data$object
+
+stoc_plots <- umap_data$plots
+
+plot_grid(stoc_plots[[1]], stoc_plots[[2]],
+          labels = c("A", "B"),
+          align = "h",
+          axis = "tb")
+
+if(HTO){
+  plot_grid(stoc_plots[[3]],
+            labels = "C")
+}
+```
+
+## Combined surface protein and gene expresion
+UMAP based on both gene expression and surface protein
+A. UMAP colored by clusters based on gene expression
+B. UMAP colored by processing group
+C. UMAP colored by demultiplexed sample
+```{r "UMAP surface protein and gene expression", results = "hide"}
+# Identify multimodal neighbors. These will be stored in the neighbors slot, 
+# and can be accessed using bm[['weighted.nn']]
+# The WNN graph can be accessed at bm[["wknn"]], 
+# and the SNN graph used for clustering at bm[["wsnn"]]
+# Cell-specific modality weights can be accessed at bm$RNA.weight
+if(SCT){
+  pca_slot <- "sctpca"
+  weight_name <- "SCT.weight"
+} else{
+  pca_slot <- "pca"
+  weight_name <- "RNA.weight"
+}
+stoc_data <- FindMultiModalNeighbors(
+  stoc_data, reduction.list = list(pca_slot, "apca"), 
+  dims.list = list(1:27, 1:16),
+  modality.weight.name = c(weight_name, "ADT.weight")
+)
+```
+
+```{r "plot umap", fig.height=4, fig.width = 8}
+stoc_data <- RunUMAP(stoc_data, nn.name = "weighted.nn",
+              reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+stoc_data <- FindClusters(stoc_data, graph.name = "wsnn",
+                              algorithm = 3, resolution = 0.6, verbose = FALSE)
+
+stoc_data[["combined_cluster"]] <- Idents(stoc_data)
+col_by_list <- c("combined_cluster", "orig.ident")
+if(HTO){
+  col_by_list <- c(col_by_list, "HTO_classification")
+}
+save_plot <- paste0(save_dir, "images/combined_umap.pdf")
+plot_list <- plotDimRed(sample_object = stoc_data,
+                        save_plot = NULL,
+                        col_by = col_by_list, return_plot = TRUE,
+                        plot_type = "wnn.umap")
+
+plot_grid(plot_list[[1]], plot_list[[2]],
+          labels = c("A", "B"),
+          align = "h",
+          axis = "tb")
+
+if(HTO){
+  plot_grid(plot_list[[3]],
+            labels = "C")
+}
+
+saveRDS(stoc_data, paste0(save_dir, "stoc_processed.rds"))
+
+```
+
+```{r "save combined umap plots", include = FALSE}
+pdf(paste0(save_dir, "images/combinedUMAP_STOC1.pdf"))
+plot_list
+dev.off()
+
+```
+
+# Map clusters {.tabset}
+We can map clusters based on existing datasets to provide some unbiased clues about cell type. Here, I used data from the human cell atlas of human thymic development: "A cell atlas of human thymic development defines T cell repertoire formation" DOI: 10.1126/science.aay3224 as the reference. The mapping isn't perfect, but it will be helpful in addition to looking at marker genes. One note is that this doesn't map to any T cell populations.
+
+```{r "set up clustify", results = "hide"}
+# get count matrix
+DefaultAssay(stoc_data) <- seurat_assay
+stoc_mat <- GetAssayData(object = stoc_data, slot = "data")
+stoc_mat <- as.data.frame(stoc_mat)
+
+# Find only 1000 variable features
+
+stoc_var <- FindVariableFeatures(
+  stoc_data,
+  assay = "RNA",
+  selection.method = "vst",
+  nfeatures = 1000
+)
+stoc_genes <- VariableFeatures(stoc_var)
+
+ref_mat <- ref_mat[rownames(ref_mat) %in% rownames(stoc_data),]
+
+```
+
+
+## Gene expression
+Here are UMAPs colored by the cell type based on correlations with the RNA clusters. For comparison between the different clustering methods, I've included UMAPs based on the RNA data (A), the surface protein data (B) and the combined data(C).
+A. Predicted cell types projected onto the UMAP made using RNA data alone
+B. Predicted cell types projected onto the UMAP made using Surface protein data alone
+C. Predicted cell types projected onto the UMAP made using both the RNA and surface protein data
+```{r "mapping based on gene expression clusters", fig.width=8, fig.height=4}
+if(SCT){
+  Idents(stoc_data) <- "SCT_cluster"
+  clusters = "SCT_cluster"
+} else{
+  Idents(stoc_data) <- "RNA_cluster"
+  clusters = "RNA_cluster"
+}
+
+
+stoc_metadata <- stoc_data[[clusters]]
+
+stoc_metadata[[clusters]] <- as.character(stoc_metadata[[clusters]])
+
+stoc_data[[clusters]] <- stoc_metadata[[clusters]]
+
+# Run clustify
+stoc_res <- clustify(
+  input = stoc_mat,
+  metadata = stoc_metadata,
+  ref_mat = ref_mat,
+  query_genes = stoc_genes,
+  cluster_col = clusters
+)
+
+stoc_cluster <- cor_to_call(stoc_res)
+new_clusters <- stoc_cluster$type
+names(new_clusters) <- stoc_cluster$cluster
+print(stoc_cluster)
+
+stoc_data$RNA_celltype <- new_clusters[stoc_data$RNA_cluster]
+
+#colors <- RColorBrewer::brewer.pal(4, "Set1")
+#colors <- lacroix_palette("PassionFruit", 4, "discrete")
+# Apricot
+# Coconut top
+# PeachPear
+# PassionFruit top
+# Tangerine
+# PommeBaya
+# PinaFraise
+# MelonPomelo
+
+colors <- lacroix_palette("Coconut", 6, "discrete")
+
+colors <- colors[c(1,2,3,5)]
+
+names(colors) <- c("DC2", "Fb_cycling", "Mast", "mTEC.III.")
+
+plot1 <- plotDimRed(stoc_data, col_by = "RNA_celltype", plot_type = "rna.umap",
+                    color = colors)[[1]]
+plot2 <- plotDimRed(stoc_data, col_by = "RNA_celltype", plot_type = "adt.umap",
+                    color = colors)[[1]]
+plot3 <- plotDimRed(stoc_data, col_by = "RNA_celltype", plot_type = "wnn.umap",
+                    color = colors)[[1]]
+
+plot_grid(plot1, plot2, plot3,
+  labels = c("A", "B", "C"),
+  nrow = 1,
+  ncol = 3,
+  align = "h",
+  axis = "tb"
+)
+```
+
+```{r "save rna cluster mapping plots", include = FALSE}
+pdf(paste0(save_dir, "images/RNA_cluster_mapping.pdf"))
+plot1
+plot2
+plot3
+dev.off()
+
+```
+
+## Surface protein
+Here are UMAPs colored by the cell type based on correlations with the surface protein clusters. For comparison between the different clustering methods, I've included UMAPs based on the RNA data (A), the surface protein data (B) and the combined data(C).
+A. Predicted cell types projected onto the UMAP made using RNA data alone
+B. Predicted cell types projected onto the UMAP made using Surface protein data alone
+C. Predicted cell types projected onto the UMAP made using both the RNA and surface protein data
+```{r "mapping based on surface protein clusters", fig.width=8, fig.height=4}
+clusters <- "ADT_cluster"
+stoc_metadata <- stoc_data[[clusters]]
+
+stoc_metadata[[clusters]] <- as.character(stoc_metadata[[clusters]])
+
+stoc_data[[clusters]] <- stoc_metadata[[clusters]]
+
+# Run clustify
+stoc_res <- clustify(
+  input = stoc_mat,
+  metadata = stoc_metadata,
+  ref_mat = ref_mat,
+  query_genes = stoc_genes,
+  cluster_col = clusters
+)
+
+stoc_cluster <- cor_to_call(stoc_res)
+new_clusters <- stoc_cluster$type
+names(new_clusters) <- stoc_cluster$cluster
+print(stoc_cluster)
+
+stoc_data$ADT_celltype <- new_clusters[stoc_data$ADT_cluster]
+
+plot1 <- plotDimRed(stoc_data, col_by = "ADT_celltype", plot_type = "rna.umap",
+                    color = colors)[[1]]
+plot2 <- plotDimRed(stoc_data, col_by = "ADT_celltype", plot_type = "adt.umap",
+                    color = colors)[[1]]
+plot3 <- plotDimRed(stoc_data, col_by = "ADT_celltype", plot_type = "wnn.umap",
+                    color = colors)[[1]]
+
+plot_grid(plot1, plot2, plot3,
+  labels = c("A", "B", "C"),
+  nrow = 1,
+  ncol = 3,
+  align = "h",
+  axis = "tb"
+)
+```
+
+```{r "save adt cluster mapping plots", include = FALSE}
+pdf(paste0(save_dir, "images/ADT_cluster_mapping.pdf"))
+plot1
+plot2
+plot3
+dev.off()
+
+```
+
+## Combined
+Here are UMAPs colored by the cell type based on correlations with the combined clusters. For comparison between the different clustering methods, I've included UMAPs based on the RNA data (A), the surface protein data (B) and the combined data(C).
+A. Predicted cell types projected onto the UMAP made using RNA data alone
+B. Predicted cell types projected onto the UMAP made using Surface protein data alone
+C. Predicted cell types projected onto the UMAP made using both the RNA and surface protein data
+D. Violin plot of the the RNA weight for the combined clusters
+E. Violin plot of the ADT weight for the combined clusters
+F. Violin plot of the RNA weight for the combined cell type
+G. Violin plot of the ADT weight for the combined cell type
+```{r "mapping based on combined clusters", fig.width=8, fig.height=4}
+clusters <- "combined_cluster"
+stoc_metadata <- stoc_data[[clusters]]
+
+stoc_metadata[[clusters]] <- as.character(stoc_metadata[[clusters]])
+
+stoc_data[[clusters]] <- stoc_metadata[[clusters]]
+
+# Run clustify
+stoc_res <- clustify(
+  input = stoc_mat,
+  metadata = stoc_metadata,
+  ref_mat = ref_mat,
+  query_genes = stoc_genes,
+  cluster_col = clusters
+)
+
+stoc_cluster <- cor_to_call(stoc_res)
+new_clusters <- stoc_cluster$type
+names(new_clusters) <- stoc_cluster$cluster
+print(stoc_cluster)
+
+stoc_data$combined_celltype <- new_clusters[stoc_data$combined_cluster]
+
+plot1 <- plotDimRed(stoc_data, col_by = "combined_celltype", plot_type = "rna.umap",
+                    color = colors)[[1]]
+plot2 <- plotDimRed(stoc_data, col_by = "combined_celltype", plot_type = "adt.umap",
+                    color = colors)[[1]]
+plot3 <- plotDimRed(stoc_data, col_by = "combined_celltype", plot_type = "wnn.umap",
+                    color = colors)[[1]]
+
+plot_grid(plot1, plot2, plot3,
+  labels = c("A", "B", "C"),
+  nrow = 1,
+  ncol = 3,
+  align = "h",
+  axis = "tb"
+)
+```
+
+```{r "save combined cluster mapping plots", include = FALSE}
+pdf(paste0(save_dir, "images/combined_cluster_mapping.pdf"))
+plot1
+plot2
+plot3
+dev.off()
+
+```
+
+
+```{r "contribution to joint umap", fig.height=4, fig.width=6}
+
+violin1 <- featDistPlot(stoc_data, "RNA.weight",
+                        sep_by = "combined_cluster")
+violin2 <- featDistPlot(stoc_data, "ADT.weight",
+                        sep_by = "combined_cluster")
+violin3 <- featDistPlot(stoc_data, "RNA.weight",
+                        sep_by = "combined_celltype", color = colors)
+violin4 <- featDistPlot(stoc_data, "ADT.weight",
+                        sep_by = "combined_celltype", color = colors)
+plot_grid(violin1, violin2, violin3, violin4,
+          nrow = 2, ncol = 2, align = "hv", axis = "tb",
+          labels = c("D", "E", "F", "G"))
+```
+
+```{r "save rdata", include = FALSE}
+saveRDS(stoc_data, paste0(save_dir, "stoc_processed.rds"))
+```
+
+
+
+# Marker genes on cell types
+Because all methods returned almost identical "cell types" I will just do cell type marker genes based on the combined UMAP and clusters.
+A. RNA markers
+B. ADT markers
+```{r "make combined cell type heatmaps", fig.height=20, fig.width=6}
+Idents(stoc_data) <- "combined_celltype"
+#marker_genes_rna <- FindAllMarkers(stoc_data, assay = seurat_assay)
+#write.csv(marker_genes_rna, file = paste0(save_dir,
+#                                          "files/rna_markes_combined_celltype.csv"))
+marker_genes_rna <- read.csv(paste0(save_dir,
+                                    "files/rna_markes_combined_celltype.csv"),
+                             row.names = 1)
+#marker_genes_adt <- FindAllMarkers(stoc_data, assay = "ADT")
+#write.csv(marker_genes_adt, file = paste0(save_dir, "files/adt_markes_combined_celltype.csv"))
+marker_genes_adt <- read.csv(paste0(save_dir,
+                                    "files/adt_markes_combined_celltype.csv"),
+                             row.names = 1)
+DefaultAssay(stoc_data) <- seurat_assay
+top10_rna <- marker_genes_rna %>% 
+  group_by(cluster) %>% 
+  top_n(n = 10, wt = avg_log2FC)
+rna_heatmap <- DoHeatmap(stoc_data, features = top10_rna$gene) + NoLegend()
+DefaultAssay(stoc_data) <- "ADT"
+top10_adt <- marker_genes_adt %>% 
+  group_by(cluster) %>% 
+  top_n(n = 10, wt = avg_log2FC)
+adt_heatmap <- DoHeatmap(stoc_data, features = top10_adt$gene) + NoLegend()
+
+plot_grid(rna_heatmap, adt_heatmap,
+          labels = c("A", "B"),
+          nrow = 2, ncol = 1,
+          align = "hv",
+          axis = "tb")
+```
+
+
+# Marker genes on clusters {.tabset}
+
+## Genes alone
+Here are ADT and gene expression markers from the diminsionality reduction using genes alone
+A. RNA markers
+B. ADT markers
+```{r "make rna heatmaps", fig.height=20, fig.width=6}
+if(SCT){
+  Idents(stoc_data) <- "SCT_cluster"
+} else{
+  Idents(stoc_data) <- "RNA_cluster"
+}
+#marker_genes_rna <- FindAllMarkers(stoc_data, assay = seurat_assay)
+#write.csv(marker_genes_rna, file = paste0(save_dir,
+#                                          "files/rna_markes_gene_clusters.csv"))
+marker_genes_rna <- read.csv(paste0(save_dir,
+                                    "files/rna_markes_gene_clusters.csv"),
+                             row.names = 1)
+#marker_genes_adt <- FindAllMarkers(stoc_data, assay = "ADT")
+#write.csv(marker_genes_adt, file = paste0(save_dir,
+#                                          "files/adt_markes_gene_clusters.csv"))
+marker_genes_adt <- read.csv(paste0(save_dir,
+                                    "files/adt_markes_gene_clusters.csv"),
+                             row.names = 1)
+DefaultAssay(stoc_data) <- seurat_assay
+top10_rna <- marker_genes_rna %>% 
+  group_by(cluster) %>% 
+  top_n(n = 10, wt = avg_log2FC)
+rna_heatmap <- DoHeatmap(stoc_data, features = top10_rna$gene) + NoLegend()
+DefaultAssay(stoc_data) <- "ADT"
+top10_adt <- marker_genes_adt %>% 
+  group_by(cluster) %>% 
+  top_n(n = 10, wt = avg_log2FC)
+adt_heatmap <- DoHeatmap(stoc_data, features = top10_adt$gene) + NoLegend()
+
+plot_grid(rna_heatmap, adt_heatmap,
+          labels = c("A", "B"),
+          nrow = 2, ncol = 1,
+          align = "hv",
+          axis = "tb")
+```
+
+
+## Surface protein alone
+Here are ADT and gene expression markers from the diminsionality reduction using surface protein alone
+A. RNA markers
+B. ADT markers
+```{r "make adt heatmaps", fig.height=20, fig.width=6}
+Idents(stoc_data) <- "ADT_cluster"
+#marker_genes_rna <- FindAllMarkers(stoc_data, assay = seurat_assay)
+#write.csv(marker_genes_rna, file = paste0(save_dir,
+#                                          "files/rna_markes_adt_clusters.csv"))
+marker_genes_rna <- read.csv(paste0(save_dir,
+                                    "files/rna_markes_adt_clusters.csv"),
+                             row.names = 1)
+#marker_genes_adt <- FindAllMarkers(stoc_data, assay = "ADT")
+#write.csv(marker_genes_adt, file = paste0(save_dir,
+#                                          "files/adt_markes_rna_clusters.csv"))
+marker_genes_adt <- read.csv(paste0(save_dir,
+                                   "files/adt_markes_rna_clusters.csv"),
+                             row.names = 1)
+DefaultAssay(stoc_data) <- seurat_assay
+top10_rna <- marker_genes_rna %>% 
+  group_by(cluster) %>% 
+  top_n(n = 10, wt = avg_log2FC)
+rna_heatmap <- DoHeatmap(stoc_data, features = top10_rna$gene) + NoLegend()
+DefaultAssay(stoc_data) <- "ADT"
+top10_adt <- marker_genes_adt %>% 
+  group_by(cluster) %>% 
+  top_n(n = 10, wt = avg_log2FC)
+adt_heatmap <- DoHeatmap(stoc_data, features = top10_adt$gene) + NoLegend()
+
+plot_grid(rna_heatmap, adt_heatmap,
+          labels = c("A", "B"),
+          nrow = 2, ncol = 1,
+          align = "hv",
+          axis = "tb")
+```
+
+
+## Combined
+Here are ADT and gene expression markers from the diminsionality reduction using both genes and surface protein
+A. RNA markers
+B. ADT markers
+```{r "make combined heatmaps", fig.height=20, fig.width=6}
+Idents(stoc_data) <- "combined_cluster"
+#marker_genes_rna <- FindAllMarkers(stoc_data, assay = seurat_assay)
+#write.csv(marker_genes_rna, file = paste0(save_dir,
+#                                          "files/rna_markes_combined_clusters.csv"))
+marker_genes_rna <- read.csv(paste0(save_dir,
+                                    "files/rna_markes_combined_clusters.csv"),
+                             row.names = 1)
+#marker_genes_adt <- FindAllMarkers(stoc_data, assay = "ADT")
+#write.csv(marker_genes_adt, file = paste0(save_dir, "files/adt_markes_combined_clusters.csv"))
+marker_genes_adt <- read.csv(paste0(save_dir, "files/adt_markes_combined_clusters.csv"))
+DefaultAssay(stoc_data) <- seurat_assay
+top10_rna <- marker_genes_rna %>% 
+  group_by(cluster) %>% 
+  top_n(n = 10, wt = avg_log2FC)
+rna_heatmap <- DoHeatmap(stoc_data, features = top10_rna$gene) + NoLegend()
+DefaultAssay(stoc_data) <- "ADT"
+top10_adt <- marker_genes_adt %>% 
+  group_by(cluster) %>% 
+  top_n(n = 10, wt = avg_log2FC)
+adt_heatmap <- DoHeatmap(stoc_data, features = top10_adt$gene) + NoLegend()
+
+plot_grid(rna_heatmap, adt_heatmap,
+          labels = c("A", "B"),
+          nrow = 2, ncol = 1,
+          align = "hv",
+          axis = "tb")
+```
+
+# UMAPs of marker genes/ADTs {.tabset}
+UMAPS and violin plots for different genes of interest
+A. Violin plots across clusters
+B. Violin plots across cell types
+C. UMAP of gene expression
+```{r "Run gene experession chunks", echo = F}
+DefaultAssay(stoc_data) <- "RNA"
+genes_plot <- params$genes[params$genes %in% rownames(stoc_data)]
+gene_chunks <- genes_plot %>%
+  map(~knit_expand("src/scripts/gene_plot_template.Rmd"))
+```
+
+`r knit_child(text = gene_chunks)`
+
+
+```{r "Run adt experession chunks", echo = F}
+DefaultAssay(stoc_data) <- "ADT"
+adts_plot <- params$adts[params$adts %in% rownames(stoc_data)]
+adt_chunks <- adts_plot %>%
+  map(~knit_expand("src/scripts/adt_plot_template.Rmd"))
+```
+
+
+`r knit_child(text = adt_chunks)`
+
+
+# Dotplots of cell markers {.tabset}
+
+```{r "pull out markers"}
+# Find markers from exisiting dataset
+reference_markers <- read.csv("files/thymus_annotated_matrix_files/top_markers_of_populations.csv",
+                              header = TRUE)
+reference_markers$X <- NULL
+
+ident_cell_types <- unique(stoc_data$combined_celltype)
+
+ident_ref_markers <- reference_markers %>%
+  select(ident_cell_types)
+
+nmarkers <- ncol(ident_ref_markers) * nrow(ident_ref_markers)
+
+desired_markers <- 40
+
+ident_ref_markers <- ident_ref_markers %>%
+  top_frac(desired_markers/nmarkers) %>%
+  gather(celltype, gene, colnames(ident_ref_markers))
+
+marker_genes_ref <- unique(ident_ref_markers$gene)
+
+marker_genes_internet <- c(
+  "KIT", # Mast cell marker from: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3999759/
+  "IL1RL1", # Mast cell marker
+  "FCER1A", # Mast cell marker
+  "MS4A2", # Mast cell marker
+  "ENPP3", # Mast cell marker
+  "HDC", # Mast cell marker
+  "TPSAB1", # Mast cell marker
+  "TPSB2", # Mast cell marker
+  "TPSD1", # Mast cell marker
+  "CMA1", # Mast cell marker
+  "CPA3", # Mast cell marker
+  "CTSG", # Mast cell marker
+  "HPGDS", # Mast cell marker
+  "LTC4S", # Mast cell marker
+  "AIRE", # mTEC marker
+  "KRT1", # Late mTEC marker
+  "KRT10", # Late mTEC marker
+  "FEZF2", # mTEC marker
+  "FOXN1", # mTEC marker
+  "TOP2A", # cycling marker
+  "MKI67", # cycling marker
+  "STMN1", # cycling marker
+  "S100A4", # Fibroblast marker
+  "COL3A1", # Fibroblast marker
+  "MGP" # Fibroblast marker
+)
+
+marker_adt_internet <- c(
+  "ADT-CD205", # Marker of cTECs and DCs, Ly75
+  "ADT-CD326", # EPCAM marker of TECs
+  "ADT-CD140a", # Mesenchimal cells
+  "ADT-CD3D", # T cells
+  "ADT-CD4", # T cells
+  "ADT-CD8", # T cells
+  "ADT-CD86", # Expressed on DCs among others
+  "ADT-CD2", # expressed on NK and T cells
+  "ADT-CD40", # on apcs
+  "ADT-CD7", # thymocytes and mature t cells
+  "ADT-CD14", # macrophages
+  "ADT-CD226", # NK and CD8 cells
+  "ADT-CLEC4C", # plasmacytoid dendritic cells 
+  "ADT-CLEC12A", # Many including moncyptes and dendritic cells
+  "ADT-C5AR1", # seems to be on mast cells
+  "ADT-SIGLEC1" # macrophages
+  
+)
+
+```
+
+
+## Reference genes
+Here I took the top genes defining each cell type of the reference (downloaded from their supplementary table) and plotted for the cell types identified to be in this data
+```{r "dotplot of reference", fig.width = 12, fig.height = 8}
+stoc_data$combined_cluster_ord <- factor(stoc_data$combined_cluster,
+                                         levels = c(2, 8, 6, 0, 1, 3, 4, 5, 7))
+stoc_data$combined_celltype <- factor(stoc_data$combined_celltype,
+                                      levels = c("Mast", "DC2", "mTEC.III.",
+                                                 "Fb_cycling"))
+dotplot_cluster <- DotPlot(stoc_data,
+                           assay = "RNA",
+                           features = marker_genes_ref,
+                           group.by = "combined_cluster_ord")
+
+dotplot_cluster <- dotplot_cluster + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dotplot_celltype <- DotPlot(stoc_data,
+                            assay = "RNA",
+                            features = marker_genes_ref,
+                            group.by = "combined_celltype")
+
+dotplot_celltype <- dotplot_celltype + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+plot_grid(dotplot_cluster, dotplot_celltype,
+          nrow = 2, ncol = 1,
+          align = "v",
+          axis = "tb")
+
+```
+
+
+## Marker genes
+Here I did a rough internet search looking for markers associated with the identified cell types
+```{r "dotplot of internet genes", fig.width = 12, fig.height = 8}
+dotplot_cluster <- DotPlot(stoc_data,
+                           assay = "RNA",
+                           features = marker_genes_internet,
+                           group.by = "combined_cluster_ord")
+
+dotplot_cluster <- dotplot_cluster + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dotplot_celltype <- DotPlot(stoc_data,
+                            assay = "RNA",
+                            features = marker_genes_internet,
+                            group.by = "combined_celltype")
+
+dotplot_celltype <- dotplot_celltype + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+plot_grid(dotplot_cluster, dotplot_celltype,
+          nrow = 2, ncol = 1,
+          align = "v",
+          axis = "tb")
+
+```
+
+## Marker ADTs
+Here I did a rough internet search looking for markers associated with the identified cell types
+```{r "dotplot of internet ADTs", fig.width = 12, fig.height = 8}
+dotplot_cluster <- DotPlot(stoc_data,
+                           assay = "ADT",
+                           features = marker_adt_internet,
+                           group.by = "combined_cluster_ord")
+
+dotplot_cluster <- dotplot_cluster + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+dotplot_celltype <- DotPlot(stoc_data,
+                            assay = "ADT",
+                            features = marker_adt_internet,
+                            group.by = "combined_celltype")
+
+dotplot_celltype <- dotplot_celltype + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+plot_grid(dotplot_cluster, dotplot_celltype,
+          nrow = 2, ncol = 1,
+          align = "v",
+          axis = "tb")
+
+```

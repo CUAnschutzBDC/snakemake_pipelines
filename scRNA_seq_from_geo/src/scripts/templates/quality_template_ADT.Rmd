@@ -1,0 +1,63 @@
+```{r echo = F}
+
+# Strings to match samples and create labels
+#gene <- "{{.x}}"
+sample <- "{{sample}}"
+sect_title <- sample
+
+if(!exists("extra_pound_quality")){
+  extra_pound_quality <- ""
+}
+
+sample_info <- sample_list[[sample]]
+
+```
+
+###`r extra_pound_quality` **`r sect_title`** {.tabset}
+
+####`r extra_pound_quality` RNA
+
+```{r {{sample}}-quality, fig.height=4, fig.width=6}
+if(sample_info$type == "single"){
+  unprocessed_object <- readRDS(sample_info$seurat_unprocessed_path)
+} else {
+  unprocessed_object <- sample_info$seurat_object
+}
+
+Idents(unprocessed_object) <- "orig.ident"
+rna_qual <- VlnPlot(unprocessed_object,
+                    features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                    ncol = 3)
+rna_qual
+```
+
+```{r}
+median_counts <- median(unprocessed_object$nCount_RNA)
+median_features <- median(unprocessed_object$nFeature_RNA)
+cell_number <- nrow(unprocessed_object[[]])
+```
+
+#####`r extra_pound_quality` Metrics
+
+* The median counts per cell is `r median_counts`
+* The median genes per cell is `r median_features`
+* The total number of cells before filtering is `r cell_number`
+
+####`r extra_pound_quality` ADT
+
+```{r {{sample}}-adt-qual, fig.height=4, fig.width=4}
+adt_qual <-   adt_qual <- VlnPlot(unprocessed_object,
+                                  features = c("nCount_ADT", "nFeature_ADT"))
+
+adt_qual
+```
+
+```{r}
+median_counts_adt <- median(unprocessed_object$nCount_ADT)
+median_features_adt <- median(unprocessed_object$nFeature_ADT)
+```
+
+#####`r extra_pound_quality` Metrics
+
+* The median ADT counts per cell is `r median_counts_adt`
+* The median ADTs per cell is `r median_features_adt`
