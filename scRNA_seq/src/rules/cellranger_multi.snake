@@ -374,7 +374,7 @@ rule run_aggr:
         "{results}/logs/{group}_cellranger_aggr_done.out"
     params:
         job_name = "{group}_cellranger_aggr",
-        memory   = "select[mem>4] rusage[mem=4]",
+        memory   = "select[mem>50] rusage[mem=50]",
         csv      = "{results}/{group}_aggr.csv",
         lsf      = LSF_TEMPLATE,
         max_jobs = MAX_JOBS,
