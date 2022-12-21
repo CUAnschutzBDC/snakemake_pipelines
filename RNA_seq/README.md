@@ -1,4 +1,7 @@
 # RNA_seq analysis pipeline
+A colection of scripts and pipelines to analyze RNA seq data.
+
+## Snakemake
 
 A snakemake pipeline that can be used to run bulk RNA-seq analysis. Can chose between cutadapt, bbduk or no adapter trimming. Outputs fastqc summary files, star summary files, and a counts matrix that can be analyzed using the rmd script
 
@@ -35,3 +38,7 @@ conda install snakemake -c bioconda -c conda-forge
 >* change the -q argument to the queue you want to use 
 
 5. submit the job using `bsub < snakecharmer.sh`
+
+## R analysis
+The file `src/scripts/DESeq_analysis.Rmd` should be used as a template for RNA-seq analysis. To follow this, you will need to decide if you need batch correction on your own data using the PCA plots generated. You will also need to design your own DE comparisons. I strongly recommend following the [tool outlined](https://github.com/tavareshugo/tutorial_DESeq2_contrasts/blob/main/DESeq2_contrasts.md) to generate your contrasts. A model for doing this is in the analysis script. I have found that this is a much more straight forward way to define your contrasts and leads to fewer mistakes. Please do not blindly follow the `DESeq_analysis.Rmd` script without understanding the steps!!!
+
