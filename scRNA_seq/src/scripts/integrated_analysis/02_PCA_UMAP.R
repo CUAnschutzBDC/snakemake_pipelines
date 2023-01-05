@@ -6,7 +6,7 @@ library(scAnalysisR)
 library(clustree)
 library(harmony)
 library(singlecellmethods)
-library(SeuratWrappers)
+library(batchelor)
 
 
 # Set theme
