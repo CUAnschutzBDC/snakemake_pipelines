@@ -77,29 +77,4 @@ if(ADT){
 }
 
 
-# Tomato+ vs - -----------------------------------------------------------------
-plot(featDistPlot(seurat_data, geneset = "tdTomato", sep_by = "RNA_celltype"))
-
-Idents(seurat_data) <- "RNA_celltype"
-seurat_alpha <- subset(seurat_data, idents = "beta")
-
-plot(featDistPlot(seurat_alpha, geneset = "tdTomato",
-                  sep_by = "RNA_cluster"))
-
-
-seurat_alpha$tdTomato_expr <- "negative"
-seurat_alpha$tdTomato_expr[GetAssayData(seurat_alpha, slot = "data")["tdTomato",]
-                           > 0.15] <- "positive"
-
-
-plot(featDistPlot(seurat_alpha, geneset = "tdTomato",
-                  sep_by = "tdTomato_expr"))
-
-marker_list <- find_write_markers(seurat_object = seurat_alpha,
-                                  meta_col = "tdTomato_expr",
-                                  pval = pval,
-                                  logfc = logfc,
-                                  assay = "RNA",
-                                  save_dir = save_dir)
-
 saveRDS(seurat_data, file.path(save_dir, "rda_obj", "seurat_processed.rds"))

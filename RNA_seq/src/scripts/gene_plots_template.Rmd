@@ -14,13 +14,22 @@ sect_title <- gene
 ```{r, fig.width = 6, fig.height = 4, message = F}
 all_gene_names <- rownames(dds)
 all_gene_ids <- sub("_ENSMUSG.*", "", all_gene_names)
+
+if(normalized){
+  save_path <- file.path(output_directory, "images", "gene_plots_normalized")
+} else {
+  save_path <- file.path(output_directory, "images", "gene_plots")
+}
+
 plot <- plot_genes(gene_id = gene,
                    gene_id_list = all_gene_ids,
                    deseq_obj = dds,
                    intgroup = params$sample_column,
                    plot_ggplot = TRUE,
-                   color = sample_colors,
+                   color = genotype_colors,
                    return_data = FALSE,
                    print = TRUE,
-                   save_path = file.path(params$output_dir, "images", "gene_plots"))
+                   save_path = save_path,
+                   normalized = normalized,
+                   vst = vsd)
 ```

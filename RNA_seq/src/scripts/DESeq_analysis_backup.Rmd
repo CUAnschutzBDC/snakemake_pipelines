@@ -19,13 +19,13 @@ params:
   fastqc_one: "results/fastqc_pre_trim_summary_untrimmed.tsv"
   fastqc_two: "results/fastqc_cutadapt_summary_trimmed.tsv"
   star_stats: "results/star_summary_cutadapt_trim.tsv"
-  output_dir: "results/R_analysis_check"
+  output_dir: "results/R_analysis"
   sample_info: "files/sample_info.csv"
   sample_column: "genotype"
   comparisons:
     value: 
-      - ["scramble", "etv1_kd"]
-      - ["scramble", "klf4_kd"]
+      - ["etv1_kd", "scramble"]
+      - ["klf4_kd", "scramble"]
   genes:
     value:
       - "Etv1"
@@ -33,7 +33,11 @@ params:
       - "Arx"
       - "Nkx6-1"
       - "Nkx2-2"
+      - "Gcg"
+      - "Bmp7"
 ---
+
+Note use this only if not using batch correction or complicated designs
 
 ```{r "Load packages and set options", include = F}
 library(knitr)
@@ -75,7 +79,7 @@ source(here("src/scripts/functions.R"))
 
 # Colors for heatmap (from the ArchR package)
 blueYellow <- c("#352A86", "#343DAE", "#0262E0", "#1389D2", "#2DB7A3",
-	"#A5BE6A", "#F8BA43", "#F6DA23", "#F8FA0D")
+  "#A5BE6A", "#F8BA43", "#F6DA23", "#F8FA0D")
 
 # Colors for statistics
 fastqc_colors <- c("#e31a1c", "#238443", "#ec7014")
@@ -331,7 +335,7 @@ C) PCA colored by day
 # This makes a DESeq2 object where the count data is our count matrix and the colData is our sample data. I am currently making the design based on "group" but we can change this if necessary
 sample_table$sample_name <- factor(sample_table$sample_name)
 sample_table$genotype <- factor(sample_table$genotype,
-                                levels = c("etv1_kd", "klf4_kd", "scramble"))
+                                levels = c("klf4_kd", "etv1_kd", "scramble"))
 sample_table$day <- factor(sample_table$day)
 
 dds <- DESeqDataSetFromMatrix(countData = count_table,
@@ -418,33 +422,17 @@ ifelse(!dir.exists(here(params$output_dir, "GSE_files")),
 ```
 
 ```{r "Run differential experession chunks", echo = F}
-# Create a model
-mod_mat <- model.matrix(design(dds), colData(dds))
+contrasts <- params$comparisons
 
-etv <- colMeans(mod_mat[dds$genotype == "etv1_kd", ])
-klf <- colMeans(mod_mat[dds$genotype == "klf4_kd", ])
-scramble <- colMeans(mod_mat[dds$genotype == "scramble", ])
+sect_titles <- lapply(contrasts, function(x){
+  sect_title <- paste(x[[1]], x[[2]], sep = "_")
+  })
 
-contrasts <- list(
-  "etv1_scramble" = list((etv - scramble),
-       "etv1_kd:scramble"),
-  "klf4_scramble" = list((klf - scramble),
-       "klf4_kd:scramble")
-  )
-
-
-# compare_contrast <- FALSE
-# compare_name <- FALSE
+names(contrasts) <- sect_titles
 
 DE_chunks <- names(contrasts) %>%
- map(~knit_expand(here("src/scripts/DESeq_template.Rmd"),
-                  interaction = TRUE, name = .x))
-
-
-# DE_chunks <- names(contrasts) %>%
-#  map(~knit_expand(here("src/scripts/test.Rmd"),
-#                   interaction = TRUE, name = .x))
-
+  map(~knit_expand(here("src/scripts/DESeq_template.Rmd"),
+                   interaction = FALSE, name = .x))
 ```
 
 `r knit_child(text = DE_chunks)`

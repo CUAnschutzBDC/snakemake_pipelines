@@ -5,13 +5,13 @@ def _get_input(wildcards):
     # Grab path of the fastq file
     fastq1 = SAMPLE_LIST.loc[wildcards.sample, "fastq1"]
     data_dir = SAMPLE_LIST.loc[wildcards.sample, "data_dir"]
-    fastq1 = data_dir + "/" + fastq1
+    fastq1 = os.path.join(data_dir, fastq1)
     # Make sure file exists
     fastq1  = _check_path(fastq1)
     if IS_PAIRED:
         # Grab path of second read
         fastq2 = SAMPLE_LIST.loc[wildcards.sample, "fastq2"]
-        fastq2 = data_dir + "/" + fastq2
+        fastq2 = os.path.join(data_dir, fastq2)
         # Make sure file exists
         fastq2 = _check_path(fastq2)
         return(fastq1, fastq2)
