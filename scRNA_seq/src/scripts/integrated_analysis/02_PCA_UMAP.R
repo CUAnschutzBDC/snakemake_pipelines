@@ -129,7 +129,8 @@ sce_data <- as.SingleCellExperiment(seurat_data)
 
 set.seed(0)
 # Run fastMNN on batch
-corrected_data <- fastMNN(sce_data, batch = sce_data$orig.ident)
+corrected_data <- fastMNN(sce_data, batch = sce_data$orig.ident,
+                          subset.row = VariableFeatures(seurat_data))
 
 # Check reduced dims
 if(!identical(rownames(SingleCellExperiment::reducedDim(x = corrected_data)), 
