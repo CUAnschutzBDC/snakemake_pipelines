@@ -129,7 +129,8 @@ sce_data <- as.SingleCellExperiment(seurat_data)
 
 set.seed(0)
 # Run fastMNN on batch
-corrected_data <- fastMNN(sce_data, batch = sce_data$orig.ident)
+corrected_data <- fastMNN(sce_data, batch = sce_data$orig.ident,
+                          subset.row = VariableFeatures(seurat_data))
 
 # Check reduced dims
 if(!identical(rownames(SingleCellExperiment::reducedDim(x = corrected_data)), 
@@ -151,7 +152,6 @@ seurat_data$mnn <- CreateDimReducObject(
 
 # UMAP -------------------------------------------------------------------------
 
-reduction_use <- "mnn" # can be "harmony" or "mnn"
 RNA_pcs <- 20
 ADT_pcs <- 8
 
@@ -186,7 +186,7 @@ pheatmap::pheatmap(cm)
 
 set.seed(0)
 # UMAP of gene expression
-umap_data <- group_cells(seurat_data, sample, save_dir, nPCs = npcs,
+umap_data <- group_cells(seurat_data, sample, save_dir, nPCs = RNA_pcs,
                          resolution = 0.6, assay = seurat_assay, HTO = HTO,
                          reduction = "mnn", size = 1)
 
@@ -242,7 +242,7 @@ plotDimRed(seurat_data, col_by = "batch", plot_type = plot_type)
 seurat_data <- BuildClusterTree(seurat_data, dims = 1:RNA_pcs)
 PlotClusterTree(seurat_data)
 
-seurat_data$uncorrected_cluster <- seurat_data$RNA_cluster
+seurat_data$corrected_cluster <- seurat_data$RNA_cluster
 
 if(ADT){
   # UMAP of surface protein
