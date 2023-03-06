@@ -38,11 +38,17 @@ ADT_SAMPLES:
     - "scSample_1_FB"
     - "scSample_2_FB"
 
-# Sample names for VDJ fastqs. Follow the same parameters required for gene
+# Sample names for TCR VDJ fastqs. Follow the same parameters required for gene
 # expression fastqs. If VDJ sequencing was not performed, leave this blank.
-VDJ_SAMPLES:
-    - "scSample_1_TCR"
-    - "scSample_2_TCR"
+VDJ_T_SAMPLES:
+    - "scSample_TCR"
+    - "scSample_TCR"
+
+# Sample names for BCR VDJ fastqs. Follow the same parameters required for gene
+# expression fastqs. If VDJ sequencing was not performed, leave this blank.
+VDJ_B_SAMPLES:
+    - "scSample_BCR"
+    - "scSample_BCR"
 
 # Path to the output directory.
 RESULTS:

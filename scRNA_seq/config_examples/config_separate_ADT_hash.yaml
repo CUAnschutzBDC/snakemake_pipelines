@@ -34,10 +34,15 @@ RNA_SAMPLES:
 ADT_SAMPLES:
     - "scSample_3_FB,scSample_3_hashtag"
 
-# Sample names for VDJ fastqs. Follow the same parameters required for gene
+# Sample names for TCR VDJ fastqs. Follow the same parameters required for gene
 # expression fastqs. If VDJ sequencing was not performed, leave this blank.
-VDJ_SAMPLES:
+VDJ_T_SAMPLES:
     - "scSample_3_TCR"
+
+# Sample names for BCR VDJ fastqs. Follow the same parameters required for gene
+# expression fastqs. If VDJ sequencing was not performed, leave this blank.
+VDJ_B_SAMPLES:
+    - "scSample_3_BCR"
 
 # Path to the output directory.
 RESULTS:

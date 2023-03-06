@@ -15,16 +15,17 @@ rule merge_fastqs:
     output:
         "{results}/logs/{sample}_merge_fastqs_done.out"
     params:
-        job_name = "merge_fastqs",
-        memory   = "select[mem>4] rusage[mem=4]",
-        raw_data = RAW_DATA_DICT,
-        fq_dir   = FASTQ_DIR,
-        fq_info  = FASTQ_INFO,
-        rna_dict = SAMPLE_DICT_RNA,
-        adt_dict = SAMPLE_DICT_ADT,
-        vdj_dict = SAMPLE_DICT_VDJ
+        job_name   = "merge_fastqs",
+        memory     = "select[mem>4] rusage[mem=4]",
+        raw_data   = RAW_DATA_DICT,
+        fq_dir     = FASTQ_DIR,
+        fq_info    = FASTQ_INFO,
+        rna_dict   = SAMPLE_DICT_RNA,
+        adt_dict   = SAMPLE_DICT_ADT,
+        vdj_t_dict = SAMPLE_DICT_VDJ_T,
+        vdj_b_dict = SAMPLE_DICT_VDJ_B
     log:
-        "{results}/logs/merge_fastqs/{sample}_merge_fastqs"
+        "{results}/logs/{sample}_merge_fastqs"
     threads:
         1
     run:
@@ -111,7 +112,8 @@ rule merge_fastqs:
         # Find rna, adt, vdj, and data dir for the sample
         rna = params.rna_dict[wildcards.sample]
         adt = params.adt_dict[wildcards.sample]
-        vdj = params.vdj_dict[wildcards.sample]
+        vdj_t = params.vdj_t_dict[wildcards.sample]
+        vdj_b = params.vdj_b_dict[wildcards.sample]
         raw_dir = params.raw_data[wildcards.sample]
         print("data_dir")
         print(raw_dir)
@@ -126,9 +128,13 @@ rule merge_fastqs:
             _merge_fastqs(adt, merged_names_adt, raw_dir)
 
         # Create symlinks for VDJ fastqs
-        if vdj:
-            merged_names_vdj = wildcards.sample + "_VDJ"
-            _merge_fastqs(vdj, merged_names_vdj, raw_dir)
+        if vdj_t:
+            merged_names_vdj = wildcards.sample + "_VDJ_T"
+            _merge_fastqs(vdj_t, merged_names_vdj, raw_dir)
+
+        if vdj_b:
+            merged_names_vdj = wildcards.sample + "_VDJ_B"
+            _merge_fastqs(vdj_b, merged_names_vdj, raw_dir)
 
         # Write output file
         with open(output[0], "w") as out:
@@ -144,19 +150,20 @@ rule create_sample_csv:
     output:
         "{results}/logs/{sample}_csv_done.out"
     params:
-        job_name = "sample_csv",
-        memory   = "select[mem>4] rusage[mem=4]",
-        results  = RESULTS,
-        fq_dir   = FASTQ_DIR,
-        gene_ref = GENOME,
-        adt_ref  = ADT_REF,
-        vdj_ref  = VDJ_REF,
-        fq_info  = FASTQ_INFO,
-        rna_dict = SAMPLE_DICT_RNA,
-        adt_dict = SAMPLE_DICT_ADT,
-        vdj_dict = SAMPLE_DICT_VDJ
+        job_name   = "sample_csv",
+        memory     = "select[mem>4] rusage[mem=4]",
+        results    = RESULTS,
+        fq_dir     = FASTQ_DIR,
+        gene_ref   = GENOME,
+        adt_ref    = ADT_REF,
+        vdj_ref    = VDJ_REF,
+        fq_info    = FASTQ_INFO,
+        rna_dict   = SAMPLE_DICT_RNA,
+        adt_dict   = SAMPLE_DICT_ADT,
+        vdj_t_dict = SAMPLE_DICT_VDJ_T,
+        vdj_b_dict = SAMPLE_DICT_VDJ_B
     log:
-        "{results}/logs/sample_csv/{sample}_csv"
+        "{results}/logs/{sample}_csv"
     threads:
         1
     run:
@@ -199,9 +206,12 @@ rule create_sample_csv:
                     adt_fastqs = _get_fastqs(sample_names + "_FB")
                     for fastq in adt_fastqs:
                         csv.write("{},{},{}\n".format(fastq, fq_dir, "Antibody Capture"))
-                vdj_fastqs = _get_fastqs(sample_names + "_VDJ")
-                for fastq in vdj_fastqs:
-                    csv.write("{},{},{}\n".format(fastq, fq_dir, "VDJ"))
+                vdj_t_fastqs = _get_fastqs(sample_names + "_VDJ_T")
+                for fastq in vdj_t_fastqs:
+                    csv.write("{},{},{}\n".format(fastq, fq_dir, "VDJ-T"))
+                vdj_b_fastqs = _get_fastqs(sample_names + "_VDJ_B")
+                for fastq in vdj_b_fastqs:
+                    csv.write("{},{},{}\n".format(fastq, fq_dir, "VDJ-B"))
 
         def _get_fastqs(sample_id):
             fq_path = os.path.join(params.fq_dir, sample_id + "*.fastq.gz")
@@ -214,7 +224,7 @@ rule create_sample_csv:
             R1_fqs = set(R1_fqs)
             return(R1_fqs)
 
-        if params.vdj_dict[wildcards.sample]:
+        if params.vdj_t_dict[wildcards.sample] or params.vdj_b_dict[wildcards.sample]:
             # Create sample csv file for cellranger multi
             sample_csv = os.path.join(params.results, wildcards.sample + "_multi.csv")
             if os.path.isfile(sample_csv):
@@ -250,21 +260,22 @@ rule cellranger_count:
     output:
         "{results}/logs/{sample}_count_done.out"
     params:
-        job_name = "count",
-        memory   = "select[mem>10] rusage[mem=10]",
-        genome   = GENOME,
-        lsf      = LSF_TEMPLATE,
-        max_jobs = MAX_JOBS,
-        barcodes = ADT_REF,
-        adt_dict = SAMPLE_DICT_ADT,
-        vdj_dict = SAMPLE_DICT_VDJ
+        job_name   = "count",
+        memory     = "select[mem>10] rusage[mem=10]",
+        genome     = GENOME,
+        lsf        = LSF_TEMPLATE,
+        max_jobs   = MAX_JOBS,
+        barcodes   = ADT_REF,
+        adt_dict   = SAMPLE_DICT_ADT,
+        vdj_t_dict = SAMPLE_DICT_VDJ_T,
+        vdj_b_dict = SAMPLE_DICT_VDJ_B
     log:
-        "{results}/logs/count/{sample}_count"
+        "{results}/logs/{sample}_count"
     threads:
         1
     run:
         # Run cellranger multi for vdj (CITE-seq) and gene expression
-        if params.vdj_dict[wildcards.sample]:
+        if params.vdj_t_dict[wildcards.sample] or params.vdj_b_dict[wildcards.sample]:
             shell(
                 """
                 sample_csv={wildcards.sample}_multi.csv
@@ -330,27 +341,28 @@ rule create_aggr_csv:
     output:
         "{results}/logs/{group}_csv_aggr_done.out"
     params:
-        job_name = "aggr_csv",
-        memory   = "select[mem>4] rusage[mem=4]",
-        results  = RESULTS,
-        lsf      = LSF_TEMPLATE,
-        max_jobs = MAX_JOBS,
-        vdj_dict = SAMPLE_DICT_VDJ
+        job_name   = "aggr_csv",
+        memory     = "select[mem>4] rusage[mem=4]",
+        results    = RESULTS,
+        lsf        = LSF_TEMPLATE,
+        max_jobs   = MAX_JOBS,
+        vdj_t_dict = SAMPLE_DICT_VDJ_T,
+        vdj_b_dict = SAMPLE_DICT_VDJ_B
     log:
-        "{results}/logs/aggr_csv/{group}_aggr_csv"
+        "{results}/logs/{group}_aggr_csv"
     threads:
         1
     run:
         def _aggr_multi(use_samples, group_csv, result_dir):
             with open(group_csv, "w") as csv_file:
-                csv_file.write("sample_id,library_outs\n")
+                csv_file.write("library_id,library_outs\n")
                 for sample in use_samples:
                     out_dir = os.path.join(result_dir, sample, "outs")
                     csv_file.write("%s,%s\n" % (sample, out_dir))
 
         def _aggr_count(use_samples, group_csv, result_dir):
             with open(group_csv, "w") as csv_file:
-                csv_file.write("sample_id,molecule_h5\n")
+                csv_file.write("library_id,molecule_h5\n")
                 for sample in use_samples:
                     h5_file = os.path.join(result_dir, sample, "outs",
                         "molecule_info.h5")
@@ -358,7 +370,7 @@ rule create_aggr_csv:
         if(wildcards.group != "none"):
             use_samples = AGGR_GROUP[wildcards.group]
             group_csv = os.path.join(params.results, wildcards.group + "_aggr.csv")
-            if params.vdj_dict[use_samples[0]]:
+            if params.vdj_t_dict[wildcards.sample] or params.vdj_t_dict[wildcards.sample]:
                 _aggr_multi(use_samples, group_csv, params.results)
             else:
                 _aggr_count(use_samples, group_csv, params.results)
@@ -374,14 +386,14 @@ rule run_aggr:
         "{results}/logs/{group}_cellranger_aggr_done.out"
     params:
         job_name = "{group}_cellranger_aggr",
-        memory   = "select[mem>50] rusage[mem=50]",
+        memory   = "select[mem>4] rusage[mem=4]",
         csv      = "{results}/{group}_aggr.csv",
         lsf      = LSF_TEMPLATE,
         max_jobs = MAX_JOBS,
         results  = RESULTS
 
     log:
-        "{results}/logs/cellranger_aggr/{group}_aggr"
+        "{results}/logs/{group}_aggr"
     threads:
         1
     run:
@@ -391,8 +403,8 @@ rule run_aggr:
                 cd {params.results}
                 
                 cellranger aggr \
-                    --id={wildcards.group} \
-                    --csv={params.csv}
+                --id={wildcards.group} \
+                --csv={params.csv}
                 '''
                 )
         # Write output file
