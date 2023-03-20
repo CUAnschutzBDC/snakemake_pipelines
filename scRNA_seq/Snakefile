@@ -14,19 +14,20 @@ from collections import defaultdict
 
 
 # Parameters from config.yaml
-RAW_DATA     = config["RAW_DATA"]
-SAMPLES      = config["SAMPLES"]
-RNA_SAMPLES  = config["RNA_SAMPLES"]
-ADT_SAMPLES  = config["ADT_SAMPLES"]
-VDJ_SAMPLES  = config["VDJ_SAMPLES"]
-RESULTS      = config["RESULTS"]
-GENOME       = config["GENOME"]
-ADT_REF      = config["ADT_REF"]
-VDJ_REF      = config["VDJ_REF"]
-MAX_JOBS     = config["MAX_JOBS"]
-LSF_TEMPLATE = config["LSF_TEMPLATE"]
-AGGR_GROUP   = config["AGGR_SAMPLES"]
-CHEMISTRY    = config["CHEMISTRY"]
+RAW_DATA       = config["RAW_DATA"]
+SAMPLES        = config["SAMPLES"]
+RNA_SAMPLES    = config["RNA_SAMPLES"]
+ADT_SAMPLES    = config["ADT_SAMPLES"]
+VDJ_T_SAMPLES  = config["VDJ_T_SAMPLES"]
+VDJ_B_SAMPLES  = config["VDJ_B_SAMPLES"]
+RESULTS        = config["RESULTS"]
+GENOME         = config["GENOME"]
+ADT_REF        = config["ADT_REF"]
+VDJ_REF        = config["VDJ_REF"]
+MAX_JOBS       = config["MAX_JOBS"]
+LSF_TEMPLATE   = config["LSF_TEMPLATE"]
+AGGR_GROUP     = config["AGGR_SAMPLES"]
+CHEMISTRY      = config["CHEMISTRY"]
 VELOCYTO_GROUP = config["VELOCYTO_GROUP"]
 
 # Function to check paths for input files/directories
@@ -53,12 +54,20 @@ if ADT_SAMPLES:
 else:
     SAMPLE_DICT_ADT = {SAMPLES[i]: "" for i in range(len(SAMPLES))}
 
-if VDJ_SAMPLES:
-    VDJ_SAMPLES = [x.strip() for x in VDJ_SAMPLES]
-    SAMPLE_DICT_VDJ = {SAMPLES[i]: VDJ_SAMPLES[i] for i in range(len(SAMPLES))}
+if VDJ_T_SAMPLES:
+    VDJ_T_SAMPLES = [x.strip() for x in VDJ_T_SAMPLES]
+    SAMPLE_DICT_VDJ_T = {SAMPLES[i]: VDJ_T_SAMPLES[i] for i in range(len(SAMPLES))}
     VDJ_REF     = _check_path(VDJ_REF)
 else:
-    SAMPLE_DICT_VDJ = {SAMPLES[i]: "" for i in range(len(SAMPLES))}
+    SAMPLE_DICT_VDJ_T = {SAMPLES[i]: "" for i in range(len(SAMPLES))}
+
+
+if VDJ_B_SAMPLES:
+    VDJ_B_SAMPLES = [x.strip() for x in VDJ_B_SAMPLES]
+    SAMPLE_DICT_VDJ_B = {SAMPLES[i]: VDJ_B_SAMPLES[i] for i in range(len(SAMPLES))}
+    VDJ_REF     = _check_path(VDJ_REF)
+else:
+    SAMPLE_DICT_VDJ_T = {SAMPLES[i]: "" for i in range(len(SAMPLES))}
 
 print(CHEMISTRY)
 
@@ -120,14 +129,14 @@ rule all:
             "{results}/logs/{group}_cellranger_aggr_done.out",
             results = RESULTS, group = AGGR_GROUP
             ),
-        expand(
-            "{results}/logs/{sample}_velocyto_done.out",
-            results = RESULTS, sample = SAMPLES
-        ),
-        expand(
-            "{results}/logs/{group}_velocyto_combined.out",
-            results = RESULTS, group = VELOCYTO_GROUP
-            )
+        # expand(
+        #     "{results}/logs/{sample}_velocyto_done.out",
+        #     results = RESULTS, sample = SAMPLES
+        # ),
+        # expand(
+        #     "{results}/logs/{group}_velocyto_combined.out",
+        #     results = RESULTS, group = VELOCYTO_GROUP
+        #     )
 
 include: "src/rules/cellranger_multi.snake"
 include: "src/rules/velocyto.snake"

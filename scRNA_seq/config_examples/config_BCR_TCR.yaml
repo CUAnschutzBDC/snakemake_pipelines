@@ -1,5 +1,6 @@
 # ==== Config file for running the 10x Cell Ranger pipeline ====================
 
+# Here one sample is TCR and one is BCR
 
 # Path to the fastq directory, multiple directories can be given.
 RAW_DATA:
@@ -41,12 +42,14 @@ ADT_SAMPLES:
 # Sample names for TCR VDJ fastqs. Follow the same parameters required for gene
 # expression fastqs. If VDJ sequencing was not performed, leave this blank.
 VDJ_T_SAMPLES:
-
+    - ""
+    - "scSample_TCR"
 
 # Sample names for BCR VDJ fastqs. Follow the same parameters required for gene
 # expression fastqs. If VDJ sequencing was not performed, leave this blank.
 VDJ_B_SAMPLES:
-
+    - "scSample_BCR"
+    - ""
 
 # Path to the output directory.
 RESULTS:
@@ -65,6 +68,7 @@ ADT_REF:
 # Path to the Cell Ranger VDJ reference. If VDJ sequencing was not performed,
 # leave this blank.
 VDJ_REF:
+    "/path_to/refdata-cellranger-vdj-GRCh38-alts-ensembl-5.0.0"
 
 # Maximum number of jobs per sample that can be submitted by Cell Ranger
 # at a time.
@@ -77,5 +81,3 @@ LSF_TEMPLATE:
 
 # Arguments to pass for chemistry. Only use this if the run failed.
 CHEMISTRY:
-        scSample_run_1: "SC3Pv3"
-    

@@ -1,0 +1,7 @@
+.*
+!.gitignore
+!.gitattributes
+raw_data
+results/*
+!results/*.tsv
+!results/*.txt
