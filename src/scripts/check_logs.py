@@ -3,6 +3,7 @@ import sys
 import argparse
 import glob
 import os
+import warnings
 
 
 def main():
@@ -10,11 +11,11 @@ def main():
 	failed_list = []
 
 	if options.in_dir == "none":
+		options.in_dir = os.getcwd()
 		print("no directory provided, looking in current directory")
-	else:
-		os.chdir(options.in_dir)
 
-	check_files(failed_list)
+	for root, subfolders, files in os.walk(options.in_dir):
+		check_files(root, failed_list)
 	print_failures(failed_list)
 
 #########
@@ -39,12 +40,12 @@ def setup():
 
     return(args)
 
-def check_files(failed_list):
+def check_files(starting_directory, failed_list):
 	"""
 	Goes through all out log files and looks for the "successfully completed."
 	message. If this isn't found, the file name is added to the failed list.
 	"""
-	for file in glob.glob("*.out"):
+	for file in glob.glob(os.path.join(starting_directory, "*.out")):
 		success = False
 		with open(file, "r") as input_file:
 			for line in input_file:
