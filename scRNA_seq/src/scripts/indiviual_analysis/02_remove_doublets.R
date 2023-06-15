@@ -70,11 +70,17 @@ if(HTO){
   max_BCmetric <- max(bcmvn_sample$BCmetric)
 }
 
-# Best is PK 0.005 second is 0.08
-pK <- 0.005
+
+# Pull out best pK
+best_pk <- bcmvn_TS_113[bcmvn_TS_113$BCmetric == max_BCmetric,]$pK
+
+pK <- as.double(as.character(best_pk))
+
 ## Homotypic Doublet Proportion Estimate ---------------------------------------
 annotations <- seurat_data$seurat_clusters
 homotypic.prop <- modelHomotypic(annotations) 
+
+# Find expected proportion -----------------------------------------------------
 ## CHANGE BASED ON CELL NUMBERS
 # Multiplet rate	# cells loaded	# cells recovered
 # 0.40%	825	500
@@ -88,17 +94,49 @@ homotypic.prop <- modelHomotypic(annotations)
 # 6.40%	13,200	8,000
 # 7.20%	14,850	9,000
 # 8.00%	16,500	10,000
+
+multiplet_mapping <- c("500" = 0.004,
+                       "1000" = 0.008,
+                       "2000" = 0.016,
+                       "3000" = 0.024,
+                       "4000" = 0.032,
+                       "5000" = 0.04,
+                       "6000" = 0.048,
+                       "7000" = 0.056,
+                       "8000" = 0.064,
+                       "9000" = 0.072,
+                       "10000" = 0.08)
+
+# Find number of cells
+ncells <- ncol(seurat_data)
+
+differences <- abs(as.numeric(names(multiplet_mapping)) - ncells)
+
+# Find the index of the element with the minimum difference
+closest_index <- which.min(differences)
+
+# Retrieve the closest number from the vector
+expected_proportion <- as.numeric(multiplet_mapping[closest_index])
+
 nExp_poi <- round(0.032*nrow(seurat_data@meta.data))  
 nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
 
 
 ## Find pK from bcmvn output, pN selection is less important--------------------
 
-seurat_data <- doubletFinder_v3(seurat_data, PCs = 1:10, pN = 0.25,
+seurat_data <- doubletFinder_v3(seurat_data, PCs = 1:npcs, pN = 0.25,
                                   pK = pK, nExp = nExp_poi.adj,
                                   reuse.pANN = FALSE, sct = SCT)
 
-seurat_data$Doublet_finder <- seurat_data$DF.classifications_0.25_0.005_80
+# Rename to be a consistent name between all samples
+df_column <- colnames(seurat_data[[]])[grep("DF.classifications",
+                                       colnames(seurat_data[[]]))]
+
+
+seurat_data$Doublet_finder <- seurat_data[[df_column]]
+
+# Remove the original name
+seurat_data[[df_column]] <- NULL
 
 plotDimRed(seurat_data, col_by = "Doublet_finder", plot_type = "rna.umap")
 
