@@ -11,10 +11,9 @@ def main():
 
 	if options.in_dir == "none":
 		print("no directory provided, looking in current directory")
-	else:
-		os.chdir(options.in_dir)
+		options.in_dir = os.getcwd()
 
-	check_files(failed_list)
+	check_files(failed_list, options.in_dir)
 	print_failures(failed_list)
 
 #########
@@ -39,20 +38,21 @@ def setup():
 
     return(args)
 
-def check_files(failed_list):
+def check_files(failed_list, search_dir):
 	"""
 	Goes through all out log files and looks for the "successfully completed."
 	message. If this isn't found, the file name is added to the failed list.
 	"""
-	for file in glob.glob("*.out"):
-		success = False
-		with open(file, "r") as input_file:
-			for line in input_file:
-				if re.search("Successfully completed.", line):
-					success = True
-					break
-		if not success:
-			failed_list.append(file)
+	for root, subdirs, files in os.walk(search_dir):
+		for file in glob.glob(root + "/*.out"):
+			success = False
+			with open(file, "r") as input_file:
+				for line in input_file:
+					if re.search("Successfully completed.", line):
+						success = True
+						break
+			if not success:
+				failed_list.append(file)
 
 def print_failures(failed_list):
 	"""
