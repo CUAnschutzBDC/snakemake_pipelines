@@ -425,8 +425,8 @@ make_plots <- function(index, deseq_obj, intgroup, plot_ggplot,
 
   if(plot_ggplot){
     if(is.null(color)){
-      color <- brewer.pal(length(levels(deseq_obj[[group_by]])), "Set1")
-      names(color) <- levels(deseq_obj[[group_by]])
+      color <- brewer.pal(length(levels(deseq_obj[[intgroup]])), "Set1")
+      names(color) <- levels(deseq_obj[[intgroup]])
     }
     
     ggplot_counts_plot <- ggplot2::ggplot(counts_plot,

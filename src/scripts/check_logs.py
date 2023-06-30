@@ -3,6 +3,7 @@ import sys
 import argparse
 import glob
 import os
+import warnings
 
 
 def main():
@@ -10,6 +11,7 @@ def main():
 	failed_list = []
 
 	if options.in_dir == "none":
+		options.in_dir = os.getcwd()
 		print("no directory provided, looking in current directory")
 		options.in_dir = os.getcwd()
 
