@@ -83,3 +83,41 @@ CHEMISTRY:
     
 
 VELOCYTO_GROUP:
+
+# =============================================================================== #
+
+# Config for running R scripts
+SCRIPT_PATH:
+    "src/scripts"
+
+# Path to all scripts to run, put these in the order you want them run.
+SCRIPTS_RUN:
+    # JR_initial_processing: "JH307_JR/01_Initial_processing.R"
+    # JR_doublets: "JH307_JR/02_remove_doublets.R"
+    # JR_adt_norm: "JH307_JR/03_adt_dsb_normalization.R"
+    # JR_PCA_UMAP: "JH307_JR/04_PCA_UMAP.R"
+    # JR_name_clusters: "JH307_JR/05_name_clusters.R"
+    # JR_adt_gating: "JH307_JR/06_adt_gating.R"
+    # JR_check_published: "JH307_JR/09_check_against_published.R"
+
+# If the exact same scripts will be run for multiple samples, put them
+# here. This is a dictionary with sample and scripts_run as keys.
+# Within a sample, the scripts will be run in order, otherwis the
+# scripts will be run in parallel.
+SAMPLE_SCRIPTS:
+    # samples:
+    #     - "JH307_MR"
+    #     - "JH307_TM"
+    # scripts_run:
+    #     - "01_Initial_processing.R"
+    #     - "02_remove_doublets.R"
+    #     - "03_adt_dsb_normalization.R"
+    #     - "04_PCA_UMAP.R"
+    #     - "05_name_clusters.R"
+    #     - "06_adt_gating.R"
+    #     - "07_PCA_UMAP_subset_cluster.R"
+    #     - "08_add_subset_info.R"
+    #     - "09_check_against_published.R"
+
+RSCRIPT_CONTAINER:
+    #"docker/r_docker/r_docker.sif"

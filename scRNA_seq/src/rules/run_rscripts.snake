@@ -1,0 +1,44 @@
+def _get_input(wildcards):
+	return_list = []
+
+	# First figure out where in the dict it should be
+	key_value = script_name_dict[wildcards.sample]
+	script_names = script_dict[key_value].keys()
+	for i in script_names:
+	    if i == wildcards.sample:
+	    	return(return_list)
+	    else:
+	    	input_file = os.path.join(wildcards.results, "run_scripts", i + "_run.txt")
+	    	return_list.append(input_file) 
+
+def _get_scripts(wildcards):
+	key_value = script_name_dict[wildcards.sample]
+	script_name = script_dict[key_value][wildcards.sample]
+
+	full_script_path=os.path.join(SCRIPT_PATH, script_name)
+	_check_path(full_script_path)
+	return(full_script_path)
+
+# Add in one rule that makes sure all cellranger is done. That output goes
+# into the return list.
+
+rule run_rscript:
+	input:
+		_get_input
+	output:
+		"{results}/run_scripts/{sample}_run.txt"
+	params:
+		job_name  = "{sample}_run_rscript",
+		memory    = "select[mem>100] rusage[mem=100]",
+		scripts   = _get_scripts
+	singularity:
+		config["RSCRIPT_CONTAINER"]
+	log:
+		"{results}/logs/rscript/rscript_{sample}"
+	threads:
+		10
+	shell:
+		"""
+		Rscript --vanilla {params.scripts}
+		echo "Finished rscript" > {output}
+		"""

@@ -29,6 +29,9 @@ LSF_TEMPLATE   = config["LSF_TEMPLATE"]
 AGGR_GROUP     = config["AGGR_SAMPLES"]
 CHEMISTRY      = config["CHEMISTRY"]
 VELOCYTO_GROUP = config["VELOCYTO_GROUP"]
+SCRIPT_PATH    = config["SCRIPT_PATH"]
+SCRIPTS_RUN    = config["SCRIPTS_RUN"]
+SAMPLE_SCRIPTS = config["SAMPLE_SCRIPTS"]
 
 # Function to check paths for input files/directories
 def _check_path(path):
@@ -110,24 +113,55 @@ if not AGGR_GROUP:
 if not VELOCYTO_GROUP:
     VELOCYTO_GROUP = "none"
 
+if SCRIPTS_RUN:
+    # Get R script info
+    # All script names is the keys of scripts run
+    script_name_dict = {i:"all_scripts" for i in SCRIPTS_RUN.keys()}
+
+
+    # Create script dict where all scripts is all the scripts_run scripts
+    script_dict = {"all_scripts": SCRIPTS_RUN}
+else:
+    script_dict = {}
+    script_name_dict = {}
+
+if SAMPLE_SCRIPTS:
+    for sample_name in SAMPLE_SCRIPTS["samples"]:
+        individual_dict = OrderedDict()
+        for script in SAMPLE_SCRIPTS["scripts_run"]:
+            # Get key and value information
+            dict_key = sample_name + "_" + script
+            dict_key = re.sub('\\.R', '', dict_key)
+            dict_value = os.path.join(sample_name, script)
+            # Add to an individual dict
+            individual_dict[dict_key] = dict_value
+            # Add the script name to all names
+            script_name_dict[dict_key] = sample_name
+        # Add new dict to the script dict under the sample name as the key
+        script_dict[sample_name] = individual_dict
+
 # Final output files
 rule all:
     input:
         expand(
-            "{results}/logs/{sample}_csv_done.out",
+            "{results}/logs/{sample}_csv_done.txt",
             results = RESULTS, sample = SAMPLES
         ),
         expand(
-            "{results}/logs/{sample}_count_done.out",
+            "{results}/logs/{sample}_count_done.txt",
             results = RESULTS, sample = SAMPLES
             ),
         expand(
-            "{results}/logs/{group}_csv_aggr_done.out",
+            "{results}/logs/{group}_csv_aggr_done.txt",
             results = RESULTS, group = AGGR_GROUP
             ),
         expand(
-            "{results}/logs/{group}_cellranger_aggr_done.out",
+            "{results}/logs/{group}_cellranger_aggr_done.txt",
             results = RESULTS, group = AGGR_GROUP
+            ),
+        expand(
+            "{results}/run_scripts/{sample}_run.txt",
+            sample = script_name_dict.keys(), results = RESULTS
             ),
         # expand(
         #     "{results}/logs/{sample}_velocyto_done.out",
