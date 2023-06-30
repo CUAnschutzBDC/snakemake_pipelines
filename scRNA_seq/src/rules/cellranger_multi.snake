@@ -13,7 +13,7 @@ import glob
 
 rule merge_fastqs:
     output:
-        "{results}/logs/{sample}_merge_fastqs_done.out"
+        "{results}/logs/{sample}_merge_fastqs_done.txt"
     params:
         job_name   = "merge_fastqs",
         memory     = "select[mem>4] rusage[mem=4]",
@@ -146,9 +146,9 @@ rule merge_fastqs:
 
 rule create_sample_csv:
     input:
-        "{results}/logs/{sample}_merge_fastqs_done.out"
+        "{results}/logs/{sample}_merge_fastqs_done.txt"
     output:
-        "{results}/logs/{sample}_csv_done.out"
+        "{results}/logs/{sample}_csv_done.txt"
     params:
         job_name   = "sample_csv",
         memory     = "select[mem>4] rusage[mem=4]",
@@ -256,9 +256,9 @@ rule create_sample_csv:
 
 rule cellranger_count:
     input:
-        "{results}/logs/{sample}_csv_done.out"
+        "{results}/logs/{sample}_csv_done.txt"
     output:
-        "{results}/logs/{sample}_count_done.out"
+        "{results}/logs/{sample}_count_done.txt"
     params:
         job_name   = "count",
         memory     = "select[mem>10] rusage[mem=10]",
@@ -335,11 +335,11 @@ rule cellranger_count:
 rule create_aggr_csv:
     input:
         expand(
-            "{results}/logs/{sample}_count_done.out",
+            "{results}/logs/{sample}_count_done.txt",
             results = RESULTS, sample = SAMPLES
         )
     output:
-        "{results}/logs/{group}_csv_aggr_done.out"
+        "{results}/logs/{group}_csv_aggr_done.txt"
     params:
         job_name   = "aggr_csv",
         memory     = "select[mem>4] rusage[mem=4]",
@@ -381,9 +381,9 @@ rule create_aggr_csv:
 
 rule run_aggr:
     input:
-        "{results}/logs/{group}_csv_aggr_done.out"
+        "{results}/logs/{group}_csv_aggr_done.txt"
     output:
-        "{results}/logs/{group}_cellranger_aggr_done.out"
+        "{results}/logs/{group}_cellranger_aggr_done.txt"
     params:
         job_name = "{group}_cellranger_aggr",
         memory   = "select[mem>4] rusage[mem=4]",
