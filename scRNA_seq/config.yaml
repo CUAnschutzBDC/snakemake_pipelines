@@ -92,32 +92,43 @@ SCRIPT_PATH:
 
 # Path to all scripts to run, put these in the order you want them run.
 SCRIPTS_RUN:
-    # JR_initial_processing: "JH307_JR/01_Initial_processing.R"
-    # JR_doublets: "JH307_JR/02_remove_doublets.R"
-    # JR_adt_norm: "JH307_JR/03_adt_dsb_normalization.R"
-    # JR_PCA_UMAP: "JH307_JR/04_PCA_UMAP.R"
-    # JR_name_clusters: "JH307_JR/05_name_clusters.R"
-    # JR_adt_gating: "JH307_JR/06_adt_gating.R"
-    # JR_check_published: "JH307_JR/09_check_against_published.R"
+
 
 # If the exact same scripts will be run for multiple samples, put them
 # here. This is a dictionary with sample and scripts_run as keys.
-# Within a sample, the scripts will be run in order, otherwis the
-# scripts will be run in parallel.
+# Within a sample, the scripts will be run in order, otherwise the
+# scripts will be run in parallel. Set to "all" if you want to run
+# on all samples
 SAMPLE_SCRIPTS:
     # samples:
-    #     - "JH307_MR"
-    #     - "JH307_TM"
+    #     "all"
+    # scripts_run:
+    #     - "02_Initial_processing.R"
+    #     - "03_remove_doublets.R"
+    #     - "04_adt_dsb_normalization.R"
+    #     - "05_PCA.R"
+    #     - "06a_UMAP_find_resolution.R"
+    #     - "06b_UMAP.R"
+    #     - "07_name_clusters.R"
+    #     - "08_find_markers.R"
+    #     - "09_demultiplex_tets.R"
+    #     - "10_compare_dsb_clr.R"
+
+# If merging all samples, put the scripts to process them below. Under
+# samples include what samples should be merged. If merging all samples,
+# set to "all"
+MERGE_SCRIPTS:
+    # samples:
+    #     "all"
     # scripts_run:
     #     - "01_Initial_processing.R"
-    #     - "02_remove_doublets.R"
-    #     - "03_adt_dsb_normalization.R"
-    #     - "04_PCA_UMAP.R"
+    #     - "02_PCA.R"
+    #     - "03_batch_correction.R"
+    #     - "04a_UMAP_find_resolution.R"
+    #     - "04b_UMAP.R"
     #     - "05_name_clusters.R"
-    #     - "06_adt_gating.R"
-    #     - "07_PCA_UMAP_subset_cluster.R"
-    #     - "08_add_subset_info.R"
-    #     - "09_check_against_published.R"
+    #     - "06_remove_doublets.R"
+    #     - "07_run_immcantation.R"
 
 RSCRIPT_CONTAINER:
     #"docker/r_docker/r_docker.sif"

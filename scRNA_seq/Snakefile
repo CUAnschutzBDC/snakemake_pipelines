@@ -29,9 +29,10 @@ LSF_TEMPLATE   = config["LSF_TEMPLATE"]
 AGGR_GROUP     = config["AGGR_SAMPLES"]
 CHEMISTRY      = config["CHEMISTRY"]
 VELOCYTO_GROUP = config["VELOCYTO_GROUP"]
-SCRIPT_PATH    = config["SCRIPT_PATH"]
-SCRIPTS_RUN    = config["SCRIPTS_RUN"]
-SAMPLE_SCRIPTS = config["SAMPLE_SCRIPTS"]
+SCRIPT_PATH     = config["SCRIPT_PATH"]
+SCRIPTS_RUN     = config["SCRIPTS_RUN"]
+SAMPLE_SCRIPTS  = config["SAMPLE_SCRIPTS"]
+MERGE_SCRIPTS   = config["MERGE_SCRIPTS"]
 
 # Function to check paths for input files/directories
 def _check_path(path):
@@ -126,19 +127,46 @@ else:
     script_name_dict = {}
 
 if SAMPLE_SCRIPTS:
+    if SAMPLE_SCRIPTS["samples"] == "all":
+        SAMPLE_SCRIPTS["samples"] = SAMPLES
     for sample_name in SAMPLE_SCRIPTS["samples"]:
         individual_dict = OrderedDict()
         for script in SAMPLE_SCRIPTS["scripts_run"]:
             # Get key and value information
-            dict_key = sample_name + "_" + script
+            dict_key = sample_name + "__" + script
             dict_key = re.sub('\\.R', '', dict_key)
-            dict_value = os.path.join(sample_name, script)
+            dict_value = os.path.join("indiviual_analysis", script)
             # Add to an individual dict
             individual_dict[dict_key] = dict_value
             # Add the script name to all names
             script_name_dict[dict_key] = sample_name
         # Add new dict to the script dict under the sample name as the key
         script_dict[sample_name] = individual_dict
+
+if MERGE_SCRIPTS:
+    if MERGE_SCRIPTS["samples"] == "all":
+        MERGE_SCRIPTS["samples"] = SAMPLES
+    merged_dict = OrderedDict()
+    for script in MERGE_SCRIPTS["scripts_run"]:
+        dict_key = "merged__" + script
+        dict_key = re.sub('\\.R', '', dict_key)
+        dict_value = os.path.join("integrated_analysis", script)
+        merged_dict[dict_key] = dict_value
+        script_name_dict[dict_key] = "merged"
+    script_dict["merged"] = merged_dict
+
+# Check that all names were entered correctly
+for name in SAMPLES:
+    name_1 = re.search("_[A-Z]+", name).group()
+    name_2 = re.search("_[A-Z]+", SAMPLE_DICT_ADT[name]).group()
+    name_3 = re.search("_[A-Z]+", SAMPLE_DICT_RNA[name]).group()
+    name_4 = re.search("_[A-Z]+", SAMPLE_DICT_VDJ_B[name]).group()
+    if(name_1 != name_2):
+        sys.exit(name_1 + " does not equal " + name_2 + " in the ADT list.")
+    if(name_1 != name_3):
+        sys.exit(name_1 + " does not equal " + name_2 + " in the RNA list.")
+    if(name_1 != name_4):
+        sys.exit(name_1 + " does not equal " + name_2 + " in the VDJ_B list.")
 
 # Final output files
 rule all:
