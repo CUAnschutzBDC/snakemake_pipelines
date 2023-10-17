@@ -59,3 +59,19 @@ SE:
     salmon:        " --validateMappings --fldMean 200 --fldSD 20 --libType 'A' --numBootstraps 50 "
     bbduk:         "ktrim=r k=23 mink=11 hdist=1 tpe tbo"
 
+
+##### Containers ######
+GENERAL_CONTAINER:
+  "docker/general_docker/chip.v1.sif"
+
+
+# The container for running picard tools
+PICARD_CONATINER:
+  "docker/picard_docker/picard.sif"
+
+# Path to picard jar file
+PICARD_JAR:
+  "docker/picard_docker/picard.jar"
+
+R_CONTAINER:
+  "docker/r_docker/chip_r.sif"

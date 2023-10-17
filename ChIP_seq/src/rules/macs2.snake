@@ -5,11 +5,11 @@ def _get_input(wildcards):
     # Grab path of the fastq file
     test_sample = SAMPLE_CONTROL[wildcards.sample]
     control_sample = re.sub(r'{}_'.format(test_sample), "", wildcards.sample)
-    test_bam = (wildcards.results + "/bowtie2_" + wildcards.trim_method +
-    "_trim/" + test_sample + "_Aligned.SortedByCoord.unique.out.bam")
+    test_bam = os.path.join(wildcards.results, "bowtie2_" + wildcards.trim_method +
+    "_trim", test_sample + "_remove_dup.bam")
 
-    control_bam = (wildcards.results + "/bowtie2_" + wildcards.trim_method +
-    "_trim/" + control_sample + "_Aligned.SortedByCoord.unique.out.bam")
+    control_bam = os.path.join(wildcards.results, "bowtie2_" + wildcards.trim_method +
+    "_trim", control_sample + "_remove_dup.bam")
 
     return(test_bam, control_bam)
 
@@ -19,25 +19,26 @@ rule macs2:
     output:
         "{results}/macs2_{trim_method}_trim/{sample}_peaks.narrowPeak"
     params:
-        job_name      = "{sample}_macs2",
-        memory        = "select[mem>30] rusage[mem=30]",
-        genome_size   = GENOME_SIZE
+        job_name    = "{sample}_macs2",
+        memory      = "select[mem>30] rusage[mem=30]",
+        genome_size = GENOME_SIZE,
+        paired      = IS_PAIRED,
+        output_path = "{results}/macs2_{trim_method}_trim/{sample}"
+    singularity:
+       GENERAL_CONTAINER    
     log:
        "{results}/logs/macs2/{sample}_{trim_method}_trim"
-    run:
-        if IS_PAIRED:
-            file_type = "BAMPE"
-        else:
-            file_type = "BAM"
-        output_path = (wildcards.results + "/macs2_" + wildcards.trim_method +
-            "_trim/" + wildcards.sample)
-        shell(
-            """
-            macs2 callpeak \
+    shell:
+        """
+        if [ {params.paired} ]
+        then
+            file_type="BAMPE"
+        else
+            file_type="BAM"
+        macs2 callpeak \
             -t {input[0]} \
             -c {input[1]} \
             -g {params.genome_size} \
-            -n {output_path} \
-            -f {file_type}
-            """
-            )
+            -n {params.output_path} \
+            -f $file_type
+        """

@@ -10,112 +10,106 @@ rule make_bigwig:
 		memory   = "select[mem>40] rusage[mem=40]"
 	threads:
 		8
+	singularity:
+		GENERAL_CONTAINER
 	log:
 		"{results}/logs/bigwig/bigwig_{trim_method}_{sample}_single"
 	shell:
 		'''
 		bamCoverage -b {input} \
-		-o {output} \
-		-p max/2 \
-		--binSize 5 \
-		--effectiveGenomeSize 2652783500 \
-		--normalizeUsing RPKM
-	    '''
+			-o {output} \
+			-p max/2 \
+			--binSize 5 \
+			--effectiveGenomeSize 2652783500 \
+			--normalizeUsing RPKM
+		'''
 
 rule make_bigwig_strand:
 	input: 
-		"{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.SortedByCoord.unique.out.bam"
+		"{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam"
 	output:
 		fwd = "{results}/bigwig_{trim_method}_trim/{sample}_Aligned_fwd.bw",
 		rev = "{results}/bigwig_{trim_method}_trim/{sample}_Aligned_rev.bw"
 	params:
 		job_name = "{sample}_bigwig",
-		memory   = "select[mem>40] rusage[mem=40]"
+		memory   = "select[mem>40] rusage[mem=40]",
+		paired   = IS_PAIRED
+	singularity:
+		GENERAL_CONTAINER
 	threads:
 		8
 	log:
 		"{results}/logs/bigwig/bigwig_{trim_method}_{sample}_paired"
-	run:
-		if IS_PAIRED:
-			shell(
-				"""
-				temp_dir={wildcards.results}/{wildcards.sample}_temp
-				mkdir $temp_dir
+	shell:
+		"""
+		if [ {params.paired} ]
+		then
+			temp_dir={wildcards.results}/{wildcards.sample}_temp
+			mkdir $temp_dir
 
-				# Forward
-				temp1={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.fwd1.bam
-				temp2={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.fwd2.bam
-				temp3={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.fwd.bam
-				
-				# include reads that are 2nd in a pair (128)
-				# Exclude reads that mapped to the reverse strand (16)
-				samtools view -b -f 128 -F 16 {input} > $temp1
-				
-				# Exclude reads that are mapped to the reverse strand (16) and
-				# first in a pair (64): 64 + 16 = 80
-				samtools view -b -f 80 {input} > $temp2
-				
-				# Combine files
-				samtools merge -f $temp3 $temp1 $temp2
-				samtools index $temp3
-				
-				bamCoverage -b $temp3 \
+			# Forward
+			temp1={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.fwd1.bam
+			temp2={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.fwd2.bam
+			temp3={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.fwd.bam
+			
+			# include reads that are 2nd in a pair (128)
+			# Exclude reads that mapped to the reverse strand (16)
+			samtools view -b -f 128 -F 16 {input} > $temp1
+			
+			# Exclude reads that are mapped to the reverse strand (16) and
+			# first in a pair (64): 64 + 16 = 80
+			samtools view -b -f 80 {input} > $temp2
+			
+			# Combine files
+			samtools merge -f $temp3 $temp1 $temp2
+			samtools index $temp3
+			
+			bamCoverage -b $temp3 \
 				-o {output.fwd} \
 				-p max/2 \
 				--binSize 5 \
 				--effectiveGenomeSize 2652783500 \
 				--normalizeUsing RPKM
-				
-				# Reverse
-				temp1={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.rev1.bam
-				temp2={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.rev2.bam
-				temp3={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.rev.bam
-				
-				# include reads that map to the reverse strand (128) and are second
-				# in a pair (16): 16 + 128 = 144
-				samtools view -b -f 144 {input} > $temp1
-				
-				# Include reads that are first in a pair (64) but
-				# exclude those that map to reverse strand (16)
-				samtools view -b -f 64 -F 16 {input} > $temp2
-				
-				# Merge files
-				samtools merge -f $temp3 $temp1 $temp2
-				samtools index $temp3
-				
-				bamCoverage -b $temp3 \
+			
+			# Reverse
+			temp1={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.rev1.bam
+			temp2={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.rev2.bam
+			temp3={wildcards.results}/{wildcards.sample}_temp/{wildcards.sample}.rev.bam
+			
+			# include reads that map to the reverse strand (128) and are second
+			# in a pair (16): 16 + 128 = 144
+			samtools view -b -f 144 {input} > $temp1
+			
+			# Include reads that are first in a pair (64) but
+			# exclude those that map to reverse strand (16)
+			samtools view -b -f 64 -F 16 {input} > $temp2
+			
+			# Merge files
+			samtools merge -f $temp3 $temp1 $temp2
+			samtools index $temp3
+			
+			bamCoverage -b $temp3 \
 				-o {output.rev} \
 				-p max/2 \
 				--binSize 5 \
 				--effectiveGenomeSize 2652783500 \
 				--normalizeUsing RPKM
-				
-				# Delete temporary files
-				rm -r $temp_dir
-				"""
-				)
-		else:
-			shell(
-				'''
-				# Run bamcoverage on only forward strand
-				bamCoverage -b {input} \
+			
+			# Delete temporary files
+			rm -r $temp_dir
+		else
+			# Run bamcoverage on only forward strand
+			bamCoverage -b {input} \
 				-o {output.fwd} \
 				-p max/2 \
 				--binSize 5 \
 				--samFlagExclude 16 \
 				--effectiveGenomeSize 2652783500 \
 				--normalizeUsing RPKM
-				
-				# Run bam coverage on only reverse strand
-				bamCoverage -b {input} \
-				-o {output.rev} \
-				-p max/2 \
-				--binSize 5 \
-				--samFlagInclude 16 \
-				--effectiveGenomeSize 2652783500 \
-				--normalizeUsing RPKM
-	    		'''
-	    	)
+			
+			# Run bam coverage on only reverse strand
+			bamCoverage -b {input} \
+		"""
 
 rule bigwig_to_sandbox:
 	input:
@@ -133,6 +127,8 @@ rule bigwig_to_sandbox:
 			)
 	output:
 		"{results}/bigwig_{trim_method}_trim/transfer_done.txt"
+	singularity:
+		GENERAL_CONTAINER
 	params:
 		input_dir = "{results}/bigwig_{trim_method}_trim/",
 		sandbox   = SANDBOX,

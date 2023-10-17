@@ -11,15 +11,19 @@ import pandas as pd
 
 
 # Parameters from config.yaml
-SAMPLE_TABLE = config["SAMPLE_TABLE"]
-GENOME       = config["GENOME"]
-RESULTS      = config["RESULTS"]
-ADAPTORS     = config["ADAPTORS"]
-TRIM_METHOD  = config["TRIM_METHOD"]
-PROJECT      = config["PROJECT"]
-GENOME_SIZE  = config["GENOME_SIZE"]
-ANNOTATION   = config["ANNOTATION"]
-SANDBOX      = config["SANDBOX"]
+SAMPLE_TABLE      = config["SAMPLE_TABLE"]
+GENOME            = config["GENOME"]
+RESULTS           = config["RESULTS"]
+ADAPTORS          = config["ADAPTORS"]
+TRIM_METHOD       = config["TRIM_METHOD"]
+PROJECT           = config["PROJECT"]
+GENOME_SIZE       = config["GENOME_SIZE"]
+ANNOTATION        = config["ANNOTATION"]
+SANDBOX           = config["SANDBOX"]
+GENERAL_CONTAINER = config["GENERAL_CONTAINER"]
+R_CONTAINER       = config["R_CONTAINER"]
+PICARD_CONTAINER  = config["PICARD_CONATINER"]
+PICARD_JAR        = config["PICARD_JAR"]
 
 # Pull out sample names and fastq files
 SAMPLE_LIST = pd.read_table(config["SAMPLE_TABLE"]).set_index("sample", drop = False)
@@ -47,26 +51,24 @@ SAMPLES = [x.strip() for x in SAMPLES]
 # Get control information
 SAMPLE_CONTROL = {}
 for sample, control in zip(SAMPLE_LIST.index.values, SAMPLE_LIST.control.values):
-    if control != "None":
+    if control != "No_ctl":
         for one_control in control.split(","):
             SAMPLE_CONTROL[sample + "_" + one_control] = sample
 
 # NOTE: now when running MACS2... expand("...{sample}...", sample = SAMPLE_CONTROL.keys())
 
 # Check/set directory/file paths
+if not os.path.exists(RESULTS):
+    os.makedirs(RESULTS)
 RESULTS  = _check_path(RESULTS)
 
 
 # Final output files
 rule all:
     input:
-    	# QC output
-    	expand(
-    		"{results}/fastqc/fastqc_{sample}_summary.txt",
-    		results = RESULTS, sample = SAMPLES),
         # Fastqc summary
         expand(
-            "{results}/fastqc_summary.tsv",
+            "{results}/fastqc_pre_trim_summary_untrimmed.tsv",
             results = RESULTS
             ),
         # Output of adaptor trimming
@@ -74,6 +76,11 @@ rule all:
             "{results}/{trim_method}_trim/{sample}.txt",
             results = RESULTS, sample = SAMPLES,
             trim_method = TRIM_METHOD),
+        # Fastqc summary
+        expand(
+            "{results}/fastqc_{trim_method}_summary_trimmed.tsv",
+            results = RESULTS, trim_method = TRIM_METHOD
+            ),
         # bowtie2
         expand(
             "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.out.sam",
@@ -98,8 +105,6 @@ rule all:
            "{results}/bigwig_{trim_method}_trim/transfer_done.txt",
            results = RESULTS, trim_method = TRIM_METHOD
            )
-
-        
 
 
 # Snakes to run
