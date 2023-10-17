@@ -4,12 +4,31 @@ def _get_input(wildcards):
 	# First figure out where in the dict it should be
 	key_value = script_name_dict[wildcards.sample]
 	script_names = script_dict[key_value].keys()
+
+	if key_value == "merged":
+		# If merged, first add all scripts associated with the samples being merged
+		for sample_name in MERGE_SCRIPTS["samples"]:
+			sample_scripts = script_dict[sample_name].keys()
+			for i in sample_scripts:
+				input_file = os.path.join(wildcards.results, "run_scripts", i + "_run.txt")
+				return_list.append(input_file)
+
+	# Add scripts in order for the given sample, return once you hit the script you
+	# are currently on.
 	for i in script_names:
 	    if i == wildcards.sample:
 	    	return(return_list)
 	    else:
 	    	input_file = os.path.join(wildcards.results, "run_scripts", i + "_run.txt")
 	    	return_list.append(input_file) 
+
+def _get_dropkick_input(wildcards):
+	sample_name = wildcards.sample
+	sample_name = re.sub("__.*", "", wildcards.sample)
+	if sample_name != "merged":
+		return(os.path.join(wildcards.results, "R_analysis", sample_name, "files/dropkick_cells.csv"))
+	else:
+		return([])
 
 def _get_scripts(wildcards):
 	key_value = script_name_dict[wildcards.sample]
@@ -24,21 +43,69 @@ def _get_scripts(wildcards):
 
 rule run_rscript:
 	input:
+		_get_dropkick_input,
 		_get_input
 	output:
 		"{results}/run_scripts/{sample}_run.txt"
 	params:
-		job_name  = "{sample}_run_rscript",
-		memory    = "select[mem>100] rusage[mem=100]",
-		scripts   = _get_scripts
+		job_name        = "{sample}_run_rscript",
+		memory          = "select[mem>100] rusage[mem=100]",
+		scripts         = _get_scripts,
+		sample_metadata = SAMPLE_METADATA,
+		sample_info     = SAMPLE_INFO
 	singularity:
 		config["RSCRIPT_CONTAINER"]
 	log:
 		"{results}/logs/rscript/rscript_{sample}"
 	threads:
+		1
+	shell:
+		"""
+		Rscript --vanilla {params.scripts} \
+			{wildcards.sample} \
+			{wildcards.results} \
+			{params.sample_metadata} \
+			{params.sample_info}
+			
+		echo "Finished rscript" > {output}
+		"""
+
+rule run_dropkick:
+	input:
+		"{results}/logs/{sample}_count_done.txt"
+	output:
+		"{results}/R_analysis/{sample}/images/dropkick/coef_plot.pdf",
+		"{results}/R_analysis/{sample}/files/dropkick_cells.csv"
+	params:
+		job_name  = "{sample}_run_dropkick",
+		memory    = "select[mem>100] rusage[mem=100]"
+	singularity:
+		config["DROPKICK_CONTAINER"]
+	log:
+		"{results}/logs/dropkick/dropkick_{sample}"
+	threads:
+		10
+	script:
+		"../scripts/indiviual_analysis/01_dropkick.py"
+
+
+rule run_scar:
+	input:
+		"{results}/logs/{sample}_count_done.txt"
+	output:
+		"{results}/R_analysis/{sample}/files/scar_denoised.csv"
+	params:
+		job_name  = "{sample}_run_scar",
+		memory    = "select[mem>100] rusage[mem=100]"
+	singularity:
+		config["SCAR_CONTAINER"]
+	log:
+		"{results}/logs/scar/scar_{sample}"
+	threads:
 		10
 	shell:
 		"""
-		Rscript --vanilla {params.scripts}
-		echo "Finished rscript" > {output}
+		python src/scripts/indiviual_analysis/01b_run_scar.py \
+			-d {wildcards.results} \
+			-s {wildcards.sample}
 		"""
