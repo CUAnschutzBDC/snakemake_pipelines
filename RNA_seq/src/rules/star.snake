@@ -2,33 +2,33 @@
 
 # Function to return paths of input files
 def _get_input(wildcards):
-    # Grab path of the fastq file
-    fastq1 = SAMPLE_LIST.loc[wildcards.sample, "fastq1"]
-    data_dir = SAMPLE_LIST.loc[wildcards.sample, "data_dir"]
-    fastq1 = os.path.join(data_dir, fastq1)
-    # Make sure file exists
-    fastq1  = _check_path(fastq1)
-    if IS_PAIRED:
-        # Grab path of second read
-        fastq2 = SAMPLE_LIST.loc[wildcards.sample, "fastq2"]
-        fastq2 = os.path.join(data_dir, fastq2)
+    if wildcards.trim_method == "no":
+        # Grab path of the fastq file
+        fastq1 = SAMPLE_LIST.loc[wildcards.sample, "fastq1"]
+        data_dir = SAMPLE_LIST.loc[wildcards.sample, "data_dir"]
+        fastq1 = os.path.join(data_dir, fastq1)
         # Make sure file exists
-        fastq2 = _check_path(fastq2)
-        return(fastq1, fastq2)
+        fastq1  = _check_path(fastq1)
+        if IS_PAIRED:
+            # Grab path of second read
+            fastq2 = SAMPLE_LIST.loc[wildcards.sample, "fastq2"]
+            fastq2 = os.path.join(data_dir, fastq2)
+            # Make sure file exists
+            fastq2 = _check_path(fastq2)
+            return(fastq1, fastq2)
+        else:
+            return(fastq1)
     else:
-        return(fastq1)
-
-def _get_input_star(wildcards):
-    # Grab path of the fastq file
-    fastq1 = (wildcards.results + "/" + wildcards.trim_method + "_trim/" +
-        wildcards.sample + "_R1_trimmed.fastq.gz")
-    if IS_PAIRED:
-        # Grab path of second read
-        fastq2 = (wildcards.results + "/" + wildcards.trim_method + "_trim/" +
-            wildcards.sample + "_R2_trimmed.fastq.gz")
-        return(fastq1, fastq2)
-    else:
-        return(fastq1)
+        # Grab path of the fastq file
+        fastq1 = (wildcards.results + "/" + wildcards.trim_method + "_trim/" +
+            wildcards.sample + "_R1_trimmed.fastq.gz")
+        if IS_PAIRED:
+            # Grab path of second read
+            fastq2 = (wildcards.results + "/" + wildcards.trim_method + "_trim/" +
+                wildcards.sample + "_R2_trimmed.fastq.gz")
+            return(fastq1, fastq2)
+        else:
+            return(fastq1)
 
 rule align:
     input:
@@ -43,32 +43,27 @@ rule align:
         genome        = GENOME,
         gtf           = GTF,
         output_prefix = "{results}/star_{trim_method}_trim/{sample}_",
-        fastqs_trim   = _get_input_star,
-        fastqs        = _get_input,
+        fastqs        = _get_input
     log:
         "{results}/logs/star/star_{sample}_{trim_method}_trim"
     message:
         "Aligning reads for {wildcards.sample}"
     threads:
         6
-    run:
-        if wildcards.trim_method == "no":
-            fastq_files = params.fastqs
-        else:
-            fastq_files = params.fastqs_trim
-        shell(    
-            """
-            module load STAR/2.5.2a
-            STAR \
+    singularity:
+       GENERAL_CONTAINER
+    shell:  
+        """
+        STAR \
             --runThreadN {threads} \
             --genomeDir {params.genome} \
             --sjdbGTFfile {params.gtf} \
-            --readFilesIn {fastq_files} \
+            --readFilesIn {params.fastqs} \
             --readFilesCommand zcat \
             --outSAMtype BAM SortedByCoordinate \
             --outFileNamePrefix {params.output_prefix}
-            """
-        )
+        """
+
 
 # Create STAR alignment summary
 rule star_summary:
@@ -89,5 +84,7 @@ rule star_summary:
         "Creating STAR alignment summary"
     threads:
         1
+    singularity:
+       GENERAL_CONTAINER
     script:
         "../scripts/starStats.py"

@@ -14,8 +14,9 @@ def _get_input(wildcards):
     if IS_PAIRED:
         # Grab path of second read
         fastq2 = SAMPLE_LIST.loc[wildcards.sample, "fastq2"]
-        # Make sure file exists
+
         fastq2 = os.path.join(data_dir, fastq2)
+        # Make sure file exists
         fastq2 = _check_path(fastq2)
         return(fastq1, fastq2)
     else:
@@ -35,35 +36,33 @@ rule bbduk:
         fastq1    = "{results}/bbduk_trim/{sample}_R1_trimmed.fastq.gz",
         fastq2    = "{results}/bbduk_trim/{sample}_R2_trimmed.fastq.gz",
         job_name  = "{sample}_bbduk",
-        memory    = "select[mem>4] rusage[mem=4]"
+        memory    = "select[mem>4] rusage[mem=4]",
+        paired    = IS_PAIRED
+    singularity:
+       GENERAL_CONTAINER
     log:
         "{results}/logs/trimming/bbduk_{sample}"
-    run:
-
-        if IS_PAIRED:
-            shell(
-                '''
-                bbduk.sh \
+    shell:
+        """
+        if [ {params.paired} ]
+        then
+            bbduk.sh \
                 in1   = {input.input_list[0]} \
                 in2   = {input.input_list[1]} \
                 out1  = {params.fastq1} \
                 out2  = {params.fastq2} \
                 ref   = {params.ref} \
                 {params.opts}
-                '''
-            )
-        else:
-            shell(
-                '''
-                bbduk.sh \
+
+        else
+            bbduk.sh \
                 in1   = {input.input_list} \
                 out1  = {params.fastq1} \
                 ref   = {params.ref} \
                 {params.opts}
-                '''
-            )
-        with open(output[0], "w") as out:
-            out.write("done with bbduk trimming/n")
+        fi
+        echo "done with bbduk trimming" > {output}
+        """
 
 """ Rules for trimming reads with cutadapt """
 # Run cutadapt for single-end reads
@@ -78,36 +77,35 @@ rule cutadapt:
         memory    = "select[mem>4] rusage[mem=4]",
         settings  = CMD_PARAMS["cutadapt"],
         fastq1    = "{results}/cutadapt_trim/{sample}_R1_trimmed.fastq.gz",
-        fastq2    = "{results}/cutadapt_trim/{sample}_R2_trimmed.fastq.gz"
+        fastq2    = "{results}/cutadapt_trim/{sample}_R2_trimmed.fastq.gz",
+        paired    = IS_PAIRED
+    singularity:
+       GENERAL_CONTAINER
     log:
         "{results}/logs/trimming/cutadapt_{sample}"
     message:
         "Trimming illumina adapters for {wildcards.sample}" 
     threads:
         1
-    run:
-        if IS_PAIRED:
-            shell(
-                """
-                cutadapt \
-                    {params.settings} \
-                    -o {params.fastq1} \
-                    -p {params.fastq2} \
-                    {input.input_list[0]}  \
-                    {input.input_list[1]}
-                """
-            )
-        else:
-            shell(
-                """
-                cutadapt \
-                    {params.settings} \
-                    -o {params.fastq1} \
-                    {input.input_list} 
-                """
-            )
-        with open(output[0], "w") as out:
-            out.write("done with cutadapt trimming/n")
+    shell:
+        """
+        if [ {params.paired} ]
+        then
+            cutadapt \
+                {params.settings} \
+                -o {params.fastq1} \
+                -p {params.fastq2} \
+                {input.input_list[0]}  \
+                {input.input_list[1]}
+        else
+            cutadapt \
+                {params.settings} \
+                -o {params.fastq1} \
+                {input.input_list}
+        fi
+        echo "done with cutadapt trimming" > {output}
+        """
+
 
 rule no_trim:
     input:

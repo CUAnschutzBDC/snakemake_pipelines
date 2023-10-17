@@ -12,13 +12,15 @@ rule count:
         opts        = CMD_PARAMS["featureCounts"]
     log:
         "{results}/logs/featureCounts/featureCounts_{sample}_{trim_method}_trim"
+    singularity:
+       GENERAL_CONTAINER
     shell:
         """
         featureCounts \
-        {params.opts} \
-        -a {params.gtf} \
-        -o {output} \
-        {input}
+            {params.opts} \
+            -a {params.gtf} \
+            -o {output} \
+            {input}
 		"""
 
 rule count_table:
@@ -34,5 +36,7 @@ rule count_table:
         memory      = "select[mem > 1] rusage[mem=1]"
     log:
         "{results}/logs/featureCounts/{project}_countTable_{trim_method}_trim"
+    singularity:
+       GENERAL_CONTAINER
     script:
         "../scripts/countTable.py"

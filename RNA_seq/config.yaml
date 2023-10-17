@@ -56,3 +56,7 @@ SE:
     featureCounts: " --extraAttributes 'gene_name,gene_biotype' -s 1 "
     bbduk:         "ktrim=r k=23 mink=11 hdist=1 tpe tbo"
 
+
+#################################### Docker images #############################################
+GENERAL_CONTAINER:
+  "docker/general_docker/rnaseq_v1.sif"

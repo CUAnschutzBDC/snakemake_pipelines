@@ -70,6 +70,8 @@ rule fastqc:
         job_name    = "{sample}_fastqc",
         memory      = "select[mem>16] rusage[mem=16]",
         directories = _get_directories
+    singularity:
+       GENERAL_CONTAINER
     log:
         "{results}/logs/fastqc_pre_trim/fastqc_{sample}_untrimmed"
     shell:
@@ -95,25 +97,26 @@ rule fastqc_trim:
         memory      = "select[mem>16] rusage[mem=16]",
         directories = _get_directories_trim,
         input_list  = _get_input_trimmed
+    singularity:
+       GENERAL_CONTAINER
     log:
         "{results}/logs/fastqc_{trim_method}/fastqc_{sample}_trimmed"
-    run:
-        if wildcards.trim_method == "no":
-            with open(output[0], "w") as out:
-                out.write("no trimming done\n")
-        else:
-            shell(
-                """
-                fastqc {params.input_list} --outdir {params.output_dir}
-                for dir in {params.directories};
-                do
-                    name=$(basename -s .zip $dir)
+    shell:
+        """
+        if [ {wildcards.trim_method} == "no" ]
+        then
+            echo "no trimming done" > {output}
+        else
+            fastqc {params.input_list} --outdir {params.output_dir}
+            for dir in {params.directories};
+            do
+                name=$(basename -s .zip $dir)
 
-                    unzip -p $dir $name/summary.txt \
-                        >> {output}
-                done
-                """   
-            )
+                unzip -p $dir $name/summary.txt \
+                    >> {output}
+            done
+        fi
+        """
 
 
 # Combine FastQC summaries
@@ -130,6 +133,8 @@ rule fastqc_summary:
         memory   = "select[mem>4] rusage[mem=4]"
     log:
         "{results}/logs/fastqc_{trim_method}/summary_{trim}"
+    singularity:
+       GENERAL_CONTAINER
     message:
         "Creating FastQC summary"
     threads:
