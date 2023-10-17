@@ -35,7 +35,9 @@ rule align:
     input:
         "{results}/{trim_method}_trim/{sample}.txt"
     output:
-        sam_output = "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.out.sam"
+        bam_output = "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.out.bam",
+        bai_file   = "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.out.bam.bai",
+        log_output = "{results}/bowtie2_{trim_method}_trim/{sample}_metrics.out"
     params:
         job_name = "{sample}_bowtie2",
         memory   = "select[mem>60] rusage[mem=60]",
@@ -54,52 +56,38 @@ rule align:
         """
         if [ {params.paired} ]
         then
-            perl_loc=$(which perl)
-
+            all_fastqs=({params.fastqs})
             bowtie2 \
-                -p {threads} -q --local \
+                --very-sensitive \
+                -k 10 \
                 -x {params.genome} \
-                -1 {params.fastqs[0]} -2 {params.fastqs[1]} \
-                -S {output.sam_output}
-        else            
+                --threads {threads} \
+                --rg-id {wildcards.sample} \
+                --rg 'SM:{wildcards.sample}' \
+                --met-file {output.log_output} \
+                -1 ${{all_fastqs[0]}} \
+                -2 ${{all_fastqs[1]}} | \
+                samtools view -b - | \
+                samtools sort -o {output.bam_output} -
+
+        else
             bowtie2 \
-                -p {threads} -q --local \
+                --very-sensitive \
+                -k 10 \
                 -x {params.genome} \
-                -U {params.fastqs} \
-                -S {output.sam_output}
+                --threads {threads} \
+                --rg-id {wildcards.sample} \
+                --rg 'SM:{wildcards.sample}' \
+                --met-file {output.log_output} \
+                -U {params.fastqs} | \
+                samtools view -b - | \
+                samtools sort -o {output.bam_output} -
 
-    """
 
-rule sorted_bam:
-    input:
-        "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.out.sam"
-    output:
-        bam_output = "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.SortedByCoord.unique.out.bam",
-        bai_output = "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.SortedByCoord.unique.out.bam.bai"
-    params:
-        job_name = "{sample}_sorted_bam",
-        memory   = "select[mem>60] rusage[mem=60]",
-        temp_bam_one = "{results}/bowtie2_{trim_method}_trim/{sample}_temp.bam",
-        temp_bam_two = "{results}/bowtie2_{trim_method}_trim/{sample}_temp2.bam"
-    singularity:
-       GENERAL_CONTAINER    
-    log:
-       "{results}/logs/sorted_bam/{sample}_{trim_method}_trim"
-    threads:
-        5
-    shell:
-        """
-        samtools view -h -S -b \
-            -o {params.temp_bam_one} \
-            {input}
-
-        sambamba sort -t {threads} \
-            -o {output.bam_output} {params.temp_bam_one}
+        fi
 
         samtools index {output.bam_output}
-
-        rm {params.temp_bam_one}
-        """
+       """
 
 #-S means input is SAM, no longer needed
 #-h means include header
@@ -107,7 +95,7 @@ rule sorted_bam:
 #-F Don't output alignments with bits set in int (256 means not primary alignment)
 rule remove_mito:
     input:
-        "results}/bowtie2_{trim_method}_trim/{sample}_Aligned.SortedByCoord.unique.out.bam"
+        "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.out.bam"
     output:
         mt_bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam",
         mt_bai = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam.bai"
@@ -203,3 +191,5 @@ rule remove_duplicate_reads:
 
         samtools index {output.bam}
         """
+
+

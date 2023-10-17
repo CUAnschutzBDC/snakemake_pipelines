@@ -2,7 +2,7 @@
 
 rule make_bigwig:
 	input: 
-		"{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.SortedByCoord.unique.out.bam"
+		"{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.out.bam"
 	output:
 		"{results}/bigwig_{trim_method}_trim/{sample}_Aligned.bw"
 	params:
