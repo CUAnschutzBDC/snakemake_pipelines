@@ -14,3 +14,4 @@ results/fastqc/*.zip
 src/rules/scripts/*.html
 .Rproj.user
 files/*.bed
+*.sif
