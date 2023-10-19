@@ -1,0 +1,63 @@
+def _get_value(wildcards, input):
+    # csv_input = os.path.join(wildcards.results, "downsampling_" + wildcards.trim_method,
+    #                          "downsampling_values.csv")
+    # This is neccessary, because in a dry-run, snakemake will evaluate the 'params' 
+    # directive in the (potentiall non-existing) input files. 
+    # From https://stackoverflow.com/questions/46636844/is-snakemake-params-function-evaluated-before-input-file-existence
+    if not Path(input.downsample_vals).exists():
+        return -1
+    csv_input = input.downsample_vals
+    csv_file = pd.read_csv(csv_input).set_index("sample", drop = False)
+    downsample_val = csv_file.loc[wildcards.sample, "relative.size"]
+    if downsample_val != 1.0:
+        downsample_val += 1 # This just makes the seed 1
+        return("-h -b -s " + str(downsample_val) + " ")
+    else:
+        return("-h -b ")
+
+
+
+rule find_downsample_val:
+    input:
+        expand(
+            "{{results}}/atac_qc_{{trim_method}}_trim/{sample}/lib_complexity.rds",
+            sample = SAMPLES
+            )
+    output:
+        "{results}/downsampling_{trim_method}/downsampling_values.csv"
+    params:
+        job_name = "downsample",
+        memory   = "select[mem>4] rusage[mem=4]",
+        samples  = SAMPLES
+    singularity:
+        R_CONTAINER
+    log:
+        "{results}/logs/downsampling/downsampling_values_{trim_method}_trim"
+    shell:
+        """
+        Rscript --vanilla src/scripts/find_downsample_val.R {output} {input}
+        """
+
+rule downsample_bams:
+    input:
+        downsample_vals = "{results}/downsampling_{trim_method}/downsampling_values.csv",
+        input_bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam"
+    output:
+        bam = "{results}/downsampling_{trim_method}/{sample}_downsampled.bam",
+        bai = "{results}/downsampling_{trim_method}/{sample}_downsampled.bam.bai"
+    params:
+        job_name = "downsample_{sample}",
+        memory   = "select[mem>50] rusage[mem=50]",
+        downsample_command = _get_value
+    singularity:
+        GENERAL_CONTAINER
+    log:
+        "{results}/logs/downsampling/{sample}_downsample_{trim_method}_trim"
+    shell:
+        """
+        samtools view {input.input_bam} \
+            {params.downsample_command} \
+            -o {output.bam}
+
+        samtools index {output.bam}
+        """

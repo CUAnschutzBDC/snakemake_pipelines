@@ -1,0 +1,148 @@
+""" Snake pipeline for running RNAseq analysis """
+
+# Configure shell for all rules 
+shell.executable("/bin/bash")
+shell.prefix("set -o nounset -o pipefail -o errexit -x; ")
+import subprocess # check if necessary
+import glob
+import os 
+import re
+import pandas as pd
+from collections import defaultdict
+
+
+# Parameters from config.yaml
+SAMPLE_TABLE  = config["SAMPLE_TABLE"]
+GENOME        = config["GENOME"]
+GTF           = config["GTF"]
+RESULTS       = config["RESULTS"]
+ADAPTORS      = config["ADAPTORS"]
+TRIM_METHOD   = config["TRIM_METHOD"]
+PROJECT       = config["PROJECT"]
+BLACKLIST     = config["BLACKLIST"]
+CHR_SIZE      = config["CHR_SIZE"]
+HMMRATAC_FILE = config["HMMRATAC_FILE"]
+GENERAL_CONTAINER = config["GENERAL_CONTAINER"]
+R_CONTAINER   = config["R_CONTAINER"]
+SEQ_INFO      = config["SEQ_INFO"]
+TRANSCRIPTS   = config["TRANSCRIPTS"]
+BSGENOME      = config["BSGENOME"]
+PICARD_CONTAINER  = config["PICARD_CONATINER"]
+PICARD_JAR        = config["PICARD_JAR"]
+
+# Pull out sample names and fastq files
+SAMPLE_LIST = pd.read_table(config["SAMPLE_TABLE"]).set_index("sample", drop = False)
+SAMPLES = SAMPLE_LIST.index.values
+IS_PAIRED = "fastq2" in SAMPLE_LIST.columns
+
+# Pull out if there are any samples with spike-ins
+if "spike_in" in SAMPLE_LIST.columns:
+    SPIKE_SAMPLES = SAMPLE_LIST[SAMPLE_LIST.spike_in].index.values
+    NON_SPIKE_SAMPLES = SAMPLE_LIST[~SAMPLE_LIST.spike_in].index.values
+else:
+    NON_SPIKE_SAMPLES = SAMPLE_LIST
+    SPIKE_SAMPLES = []
+
+if IS_PAIRED:
+    CMD_PARAMS = config["PE"]
+else:
+    CMD_PARAMS = config["SE"]
+
+# Function to check paths for input files/directories
+def _check_path(path):
+    if os.path.exists(path):
+        return os.path.abspath(path)
+    else:
+        sys.exit("ERROR: " + path + " does not exist.")
+
+
+
+# Set sample/group names
+SAMPLES = [x.strip() for x in SAMPLES]
+
+# diffbind columns 
+diffbind_cols = ["tissue"]
+
+# Make a dictionary with information about the each sample
+diffbind_dict = defaultdict(dict)
+for i in diffbind_cols:
+    for j in SAMPLES:
+        diffbind_dict[i][j] = SAMPLE_LIST.loc[j, i]
+
+
+
+# Check/set directory/file paths
+if not os.path.exists(RESULTS):
+    os.makedirs(RESULTS)
+RESULTS  = _check_path(RESULTS)
+
+
+# Final output files
+rule all:
+    input:
+        # Fastqc summary
+        expand(
+            "{results}/fastqc_pre_trim_summary_untrimmed.tsv",
+            results = RESULTS
+            ),
+        # Output of adaptor trimming
+        expand(
+            "{results}/{trim_method}_trim/{sample}.txt",
+            results = RESULTS, sample = SAMPLES,
+            trim_method = TRIM_METHOD),
+        # Fastqc summary
+        expand(
+            "{results}/fastqc_{trim_method}_summary_trimmed.tsv",
+            results = RESULTS, trim_method = TRIM_METHOD
+            ),
+        # Bowtie2 output
+        expand(
+            "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.sortedByCoord.out.bam",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
+            ),
+        # Make QC plots
+        expand(
+            "{results}/atac_qc_{trim_method}_trim/{sample}/plots/tss_enrichment_by_nucleosome.pdf",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
+            ),
+
+        # Call peaks - macs
+        expand(
+             "{results}/macs2_{trim_method}_trim/{sample}_peaks.broadPeak",
+             results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
+            ),
+        expand(
+            "{results}/featureCounts_{trim_method}_trim/combined_frip.tsv",
+            results = RESULTS, trim_method = TRIM_METHOD
+            ),
+
+        # Call peaks - hmmratac
+        expand(
+            "{results}/hmmratac_{trim_method}_trim/{sample}_peaks.gappedPeak",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
+            ),
+
+        # Diff bind
+        expand(
+            "{results}/{peak_caller}_diffbind_{trim_method}_trim/count_obj.rds",
+            results = RESULTS, trim_method = TRIM_METHOD, peak_caller = ["macs2", "hmmratac"]
+            ),
+
+        # Downsample
+        expand(
+            "{results}/downsampling_{trim_method}/downsampling_values.csv",
+            results = RESULTS, trim_method = TRIM_METHOD
+            ),
+        expand(
+            "{results}/downsampling_{trim_method}/{sample}_downsampled.bam",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
+            )
+
+
+# Snakes to run
+include: "src/rules/fastqc.snake"
+include: "src/rules/trimming.snake"
+include: "src/rules/alignment.snake"
+include: "src/rules/qc_plots.snake"
+include: "src/rules/call_peaks.snake"
+include: "src/rules/downsample.snake"

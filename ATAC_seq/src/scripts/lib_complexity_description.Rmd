@@ -1,0 +1,150 @@
+---
+title: "Gene plots for Alex Theis"
+author: "Kristen Wells"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    highlight: "tango"
+    df_print: "paged"
+    code_folding: "hide"
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  message = F, 
+  warning = F,
+  comment = ""
+)
+library(here)
+
+knitr::opts_knit$set(root.dir = here())
+```
+
+# Understanding output
+I ran `estimateLibraryComplexity` from `ATACseqQC` and am working on understanding the output and how to use that to downsample the data as suggested in figure 4 of [ATAC-seq normalization method can significantly affect differential accessibility analysis and interpretation](https://epigeneticsandchromatin.biomedcentral.com/articles/10.1186/s13072-020-00342-y)
+
+`ATACseqQC` does not have good [documentation](https://rdrr.io/bioc/ATACseqQC/man/estimateLibComplexity.html) on the `estimateLibraryComplexity` function. But within their [function](https://rdrr.io/bioc/ATACseqQC/src/R/estimateLibComplexity.R) I was able to pull out some of what's happening.
+
+It calls a function [`ds.rSAC.bootstrap`](https://www.rdocumentation.org/packages/preseqR/versions/4.0.0/topics/ds.rSAC.bootstrap) which outputs values that is the estimate of the number of unique reads represented at least once after downsampling.
+
+Overall, 3 columns are output
+
+1. relative.size - the percent of reads
+2. values - estimator for the number of unique reads represented at least once in a random sample
+3. reads - relative size multiplied by the total - which comes from the reds_dup file I'm assuming that this is the total number of reads.
+
+# Digging into the data
+To explore this more, I'm going to play with the output a bit.
+
+```{r}
+library(ATACseqQC)
+library(tidyverse)
+
+ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
+
+
+data_dir <- file.path("~/Documents/sshfs/Analysis/Lori_Sussel/Maria_Hansen",
+                      "220708_bulk_atac/results/atac_qc_cutadapt_trim")
+
+
+samples <- c("Ctrl_1", "Ctrl_2", "KO_1", "KO_2")
+
+lib_complexity <- lapply(samples, function(x){
+  complexity <- readRDS(file.path(data_dir, x, "lib_complexity.rds"))
+  complexity$sample <- x
+  return(complexity)
+})
+
+lib_complexity <- do.call(rbind, lib_complexity)
+```
+
+## What is the `reads`
+
+I'm going to backtrack and find the "total" by taking `reads/relative.size`
+
+
+This new number is consistent for all samples
+```{r}
+lib_complexity$total <- lib_complexity$reads/lib_complexity$relative.size
+
+table(lib_complexity$total, lib_complexity$sample)
+```
+
+And it is identical to the reads for the non-downsampled group
+```{r}
+lib_complexity %>%
+  dplyr::filter(relative.size == 1)
+```
+
+## Relationship of values
+
+Next, I wanted to better understand the `values` and how to pick the correct `relative.size`
+
+It seems that the relationship between `relative.size` and `values` is not linear for most of the samples (except `KO_1` which we know failed)
+```{r}
+lib_complexity_plot <- lib_complexity %>%
+  dplyr::filter(relative.size < 1)
+
+ggplot(lib_complexity_plot, aes(x = relative.size, y = values,
+                           color = sample)) +
+  geom_point() +
+  scale_color_brewer(palette = "Set1")
+
+```
+
+
+Most of the samples seem to have a `relative.size ~ values^2` relationship.
+```{r}
+ggplot(lib_complexity_plot, aes(x = relative.size, y = values^2,
+                                color = sample)) +
+  geom_point() +
+  scale_color_brewer(palette = "Set1")
+```
+
+## Finding the appropriate `relative.size`
+Finding the appropriate `relative.size` will be less straight forward than I'd hoped. I wanted to find the `relative.size` by dividing the smallest value for `relative.size = 1` by the `value` of the other samples at `relative.size = 1` and also by finding the `value` that is closest to the minimum `value` when `relative.size = 1`. I'd hoped that the two numbers would agree, but if the relationship is not linear, they will not agree.
+
+
+First looking at the `relative.size` based on the following equation
+
+`relative.size.downsample = smallest_value/values` when `relative.size = 1`
+```{r}
+one_vals <- lib_complexity %>%
+  dplyr::filter(relative.size == 1) %>%
+  dplyr::mutate(min_val = min(values)) %>%
+  dplyr::mutate(percent_min = round(min_val / values, 2))
+
+print(one_vals)
+```
+
+Next looking at the `relative.size` based on the closest `value` to the smallest `value` when `relative.size = 1`
+```{r}
+min_value <- one_vals$min_val[1]
+
+# Find the downsampling based on the closest value -----------------------------
+
+best_match <- lapply(samples, function(x){
+  print(x)
+  sample_complexity <- lib_complexity %>%
+    dplyr::filter(sample == x) %>%
+    dplyr::mutate(difference = abs(values - min_value)) %>%
+    dplyr::filter(difference == min(difference))
+  
+  return(sample_complexity)
+})
+
+best_match <- do.call(rbind, best_match)
+
+print(best_match)
+```
+
+Obviously, the two do not agree, but based on my understanding of the bootstrapping approach, it is best to go with the `relative.size` indicated by the second approach.
+
+```{r}
+best_match %>%
+  dplyr::select(sample, relative.size)
+```

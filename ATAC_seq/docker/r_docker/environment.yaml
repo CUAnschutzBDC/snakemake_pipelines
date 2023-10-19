@@ -1,0 +1,12 @@
+name: human
+
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python >=3.8
+  - pip >=1.4
+  - snakemake >=6.1.2
+  - drmaa >= 0.7.9
+  - pysam >= 0.16

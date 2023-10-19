@@ -1,0 +1,88 @@
+def _get_diffbind_input(wildcards):
+    if wildcards.peak_caller == "macs2":
+        return(expand(
+            wildcards.results + "/macs2_" + wildcards.trim_method +
+            "_trim/{sample}_peaks.narrowPeak",
+            sample = SAMPLES
+            ))
+    elif wildcards.peak_caller == "hmmratac":
+        return(expand(
+            wildcards.results + "/hmmratac_" + wildcards.trim_method + 
+            "_trim/{sample}_summits.bed",
+            sample = SAMPLES
+            ))
+    else:
+        sys.exit("Unknown peak caller used, please check output and update diffbind rule")
+
+
+# Make QC plots
+rule atac_qc:
+    input:
+        "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam",
+        "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam"
+    output:
+        complexity = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/complexity.pdf",
+        frag_size = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/frag_size.pdf",
+        promoter = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/promotor_transcript_body.pdf",
+        nucleosome_free = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/nucleosome_free_regions.pdf",
+        tss_plot = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/transcription_start_site_enrichment.pdf",
+        percentate = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/cumulative_percentage.pdf",
+        tss_nucelosome = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/tss_enrichment_by_nucleosome.pdf",
+        lib_complexity = "{results}/atac_qc_{trim_method}_trim/{sample}/lib_complexity.rds",
+        tss_score = "{results}/atac_qc_{trim_method}_trim/{sample}/tss_score.csv"
+    params:
+        job_name         = "{sample}_atac_qc",
+        memory           = "select[mem>60] rusage[mem=60]",
+        output_directory = "{results}/atac_qc_{trim_method}_trim/{sample}",
+        output_plot_dir  = "{results}/atac_qc_{trim_method}_trim/{sample}/plots",
+        seq_info         = SEQ_INFO,
+        transcripts      = TRANSCRIPTS,
+        bsgenome         = BSGENOME
+    singularity:
+       R_CONTAINER
+    log:
+        "{results}/logs/atac_qc/atac_qc_{sample}_{trim_method}_trim"
+    script:
+        "../scripts/atac_qc.R"
+
+rule diffbind:
+    input:
+        bam_files = expand(
+            "{{results}}/bowtie2_{{trim_method}}_trim/{sample}_remove_dup.bam",
+            sample = SAMPLES
+            ),
+        peak_files = _get_diffbind_input
+    output:
+        db_obj    = "{results}/{peak_caller}_diffbind_{trim_method}_trim/db_obj.rds",
+        count_obj = "{results}/{peak_caller}_diffbind_{trim_method}_trim/count_obj.rds"
+    params:
+        job_name  = "diffbind",
+        memory    = "select[mem>60] rusage[mem=60]",
+        samples   = SAMPLES,
+        tissue    = diffbind_dict["tissue"],
+        blacklist = BLACKLIST,
+        out_dir   = "{results}/{peak_caller}_diffbind_{trim_method}_trim"
+    singularity:
+       R_CONTAINER
+    log:
+        "{results}/logs/diffbind/{peak_caller}_diffbind_{trim_method}_trim"
+    script:
+        "../scripts/DiffBind.R"
+
+rule combine_tss:
+    input:
+        expand(
+            "{{results}}/atac_qc_{{trim_method}}_trim/{sample}/tss_score.csv",
+            sample = SAMPLES
+            )
+    output:
+        "{results}/atac_qc_{{trim_method}}_trim/tss_enrichment_scores.csv"
+    params:
+        job_name  = "combine_tss",
+        memory    = "select[mem>4] rusage[mem=4]"
+    singularity:
+       R_CONTAINER
+    log:
+        "{results}/logs/atac_qc_{trim_method}/combine_tss"
+    script:
+        "../scripts/merge_tss.R"

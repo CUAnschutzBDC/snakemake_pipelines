@@ -1,0 +1,38 @@
+library(tidyverse)
+library(BiocManager)
+library(Seurat)
+library(biomaRt)
+library(scAnalysisR) # CUAnschutzBDC/scAnalysisR
+library(clustifyr)
+library(DoubletFinder) # chris-mcginnis-ucsf/DoubletFinder
+library(cowplot)
+library(here)
+library(pheatmap)
+library(clustree)
+library(harmony)
+library(viridis)
+library(pathview)
+library(openxlsx)
+library(gprofiler2)
+library(singlecellmethods) # immunogenomics/singlecellmethods
+library(batchelor)
+library(knitr)
+library(LaCroixColoR) # johannesbjork/LaCroixColoR
+library(rmarkdown)
+library(SingleCellExperiment)
+library(MetBrewer) # BlakeRMills/MetBrewer
+library(muscat)
+library(AUCell)
+library(AnnotationHub)
+library(DropletUtils)
+library(RSpectra)
+library(SCOPfunctions)
+library(MAST)
+library(corrplot)
+library(SignacX)
+library(inauguration) # ciannabp/inauguration
+library(DropletTestFiles)
+library(scPred)
+library(timeDate)
+library(ggpubr)
+library(pryr)

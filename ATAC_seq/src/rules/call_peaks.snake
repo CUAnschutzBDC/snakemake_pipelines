@@ -1,0 +1,138 @@
+def _get_file_type(wildcards):
+    if IS_PAIRED:
+        return("BAMPE")
+    else:
+        return("BAM")
+
+rule call_peaks:
+    input:
+        "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam"
+    output:
+        broad = "{results}/macs2_{trim_method}_trim/{sample}_peaks.broadPeak",
+        narrow = "{results}/macs2_{trim_method}_trim/{sample}_peaks.narrowPeak"
+    params:
+        job_name  = "{sample}_macs2",
+        memory    = "select[mem>60] rusage[mem=60]",
+        outdir    = "{results}/macs2_{trim_method}_trim",
+        file_type = _get_file_type
+    singularity:
+       GENERAL_CONTAINER
+    log:
+        "{results}/logs/macs2/macs2_{sample}_{trim_method}_trim"
+    threads:
+        6
+    shell:
+        """
+        macs2 callpeak \
+            -t {input} \
+            -q 0.05 \
+            --broad \
+            -f {params.file_type} \
+            -n {wildcards.sample} \
+            --outdir {params.outdir}
+
+        macs2 callpeak \
+            -t {input} \
+            -q 0.05 \
+            -f {params.file_type} \
+            -n {wildcards.sample} \
+            --outdir {params.outdir}
+
+        """
+
+rule frip:
+    input:
+        bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam",
+        peaks = "{results}/macs2_{trim_method}_trim/{sample}_peaks.narrowPeak"
+    output:
+        count_file = "{results}/featureCounts_{trim_method}_trim/{sample}_counts.txt",
+        summary    = "{results}/featureCounts_{trim_method}_trim/{sample}_counts.txt.summary"
+    params:
+        job_name  = "{sample}_frip",
+        memory    = "select[mem>10] rusage[mem=10]",
+        out_dir   = "{results}/featureCounts_{trim_method}_trim"
+    singularity:
+       GENERAL_CONTAINER
+    log:
+        "{results}/logs/featureCounts/featureCounts_{sample}_{trim_method}_trim"
+    shell:
+        """
+        file_name={params.out_dir}/{wildcards.sample}.saf
+
+        # Make saf
+        awk \
+            'OFS="\t" {{print $1"-"$2+1"-"$3, $1, $2+1, $3, "+"}}' \
+            {input.peaks} > $file_name
+
+        # feature counts
+        featureCounts \
+            -p -a $file_name \
+            -F SAF -o {output.count_file} \
+            {input.bam}
+        """
+
+rule combine_frip:
+    input:
+        all_files = expand("{results}/featureCounts_{trim_method}_trim/{sample}_counts.txt.summary",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES)
+    output:
+        out_file = "{results}/featureCounts_{trim_method}_trim/combined_frip.tsv"
+    params:
+        job_name  = "frip",
+        memory    = "select[mem>10] rusage[mem=10]"
+    log:
+        "{results}/logs/combine_frip/combined_{trim_method}"
+    run:
+        count_dictionary = {}
+        for file in input.all_files:
+            file_name = file.split("/")[-1]
+            sample_name = re.sub("_counts.txt.summary", "", file_name)
+            with open(file, "r") as in_file:
+                total_count = 0
+                header = next(in_file)
+                for line in in_file:
+                    alignment_type, count = line.strip().split("\t")
+                    total_count += int(count)
+                    if alignment_type == "Assigned":
+                        assigned_count = int(count)
+
+                frip_val = assigned_count / total_count
+                count_dictionary[sample_name] = frip_val
+
+        with open(output.out_file, "w") as out_file:
+            out_file.write("sample\tfrip_val\n")
+            for sample in count_dictionary:
+                out_file.write("{}\t{}\n".format(sample, str(count_dictionary[sample])))
+
+
+rule hmmratac:
+    input:
+        "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam" # sorted bam
+    output:
+        model   = "{results}/hmmratac_{trim_method}_trim/{sample}.model",
+        peaks   = "{results}/hmmratac_{trim_method}_trim/{sample}_peaks.gappedPeak",
+        summits = "{results}/hmmratac_{trim_method}_trim/{sample}_summits.bed"
+    params:
+        job_name   = "{sample}_hmmratac",
+        memory     = "select[mem>60] rusage[mem=60]",
+        out_prefix = "{results}/hmmratac_{trim_method}_trim/{sample}",
+        hmmratac   = HMMRATAC_FILE,
+        chr_sizes  = CHR_SIZE,
+        blacklist  = BLACKLIST
+    singularity:
+       GENERAL_CONTAINER
+    log:
+        "{results}/logs/hmmratac/hmmratac_{sample}_{trim_method}_trim"
+    threads:
+        6
+    shell:
+        """
+        bam_index={input}.bai
+        
+        java -jar -Xmx60g {params.hmmratac} \
+            -b {input} \
+            -i $bam_index \
+            -g {params.chr_sizes} \
+            -o {params.out_prefix} \
+            -e {params.blacklist}
+        """

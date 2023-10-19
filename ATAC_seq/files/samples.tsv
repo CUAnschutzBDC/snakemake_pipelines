@@ -1,0 +1,11 @@
+sample	fastq1	fastq2	data_dir	tissue
+Ctrl_1	Ctrl_1_S15_L003_R1_001.fastq.gz	Ctrl_1_S15_L003_R2_001.fastq.gz	raw_data	islet
+Ctrl_2	Ctrl_2_S18_L003_R1_001.fastq.gz	Ctrl_2_S18_L003_R2_001.fastq.gz	raw_data	islet
+Ctrl_3	MSH_3_S35_L002_R1_001.fastq.gz	MSH_3_S35_L002_R2_001.fastq.gz	raw_data	islet
+Ctrl_4	230726_MSH_2_S42_L004_R1_001.fastq.gz	230726_MSH_2_S42_L004_R2_001.fastq.gz	raw_data	islet
+Ctrl_5	230726_MSH_4_S44_L004_R1_001.fastq.gz	230726_MSH_4_S44_L004_R2_001.fastq.gz	raw_data	islet
+KO_1	KO_1_S16_L003_R1_001.fastq.gz	KO_1_S16_L003_R2_001.fastq.gz	raw_data	islet
+KO_2	KO_2_S17_L003_R1_001.fastq.gz	KO_2_S17_L003_R2_001.fastq.gz	raw_data	islet
+KO_3	MSH_2_S34_L002_R1_001.fastq.gz	MSH_2_S34_L002_R2_001.fastq.gz	raw_data	islet
+KO_4	230726_MSH_1_S41_L004_R1_001.fastq.gz	230726_MSH_1_S41_L004_R2_001.fastq.gz	raw_data	islet
+KO_5	230726_MSH_3_S43_L004_R1_001.fastq.gz	230726_MSH_3_S43_L004_R2_001.fastq.gz	raw_data	islet

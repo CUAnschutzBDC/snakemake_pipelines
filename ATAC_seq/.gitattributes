@@ -1,0 +1,5 @@
+*.html linguist-generated
+*.Rmd linguist-detectable
+*.rmd linguist-detectable
+*.ipynb linguist-generated
+*.snake linguist-language=Python

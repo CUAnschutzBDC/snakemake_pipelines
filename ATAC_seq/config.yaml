@@ -1,0 +1,85 @@
+##### aligning information #####
+
+# Sample sheet. This is the path to the sample sheet. Should be a tab delimited
+# tsv file with the one column titled "sample" and a second column titled
+# "fastq1" with filenames relating to each sample. If paired end sequencing was
+# done, another columen should be titled "fastq2" with filenames for read 2.
+# If spike-ins were included another column can be spike-in with True/False
+# values and you must include paths for the COMBINED_GENOME and COMBINED_GTF
+SAMPLE_TABLE:
+  "files/samples.tsv"
+
+# Project the name of the project
+PROJECT:
+  "bulk_atac"
+
+# Reference. This should be the path to a directory created using bowtie2
+GENOME:
+  /beevol/home/rbilab/ref/indices/bowtie2/mouse/GRCm38/GRCm38
+
+# GTF. This is a path to the gtf file. Should match the genome fa used
+GTF:
+  /beevol/home/rbilab/ref/annotation/mouse/GRCm38/gtf/Mus_musculus.GRCm38.96.gtf
+
+# Path to results directory
+RESULTS:
+  "results"
+
+# Path to adaptors file. This is included in the bbtools package under .../bbmap/resources/adaptors.fa
+# Not necessary if not using bbduk for trimming
+ADAPTORS:
+
+
+# Trim method, can be "bbduk", "cutadapt", or "no"
+TRIM_METHOD:
+  "cutadapt"
+
+# Parameters for paired end or single end experiments
+PE:
+    cutadapt:      " -m 20 -a 'CTGTCTCTTATACACATCTCCGAGCCCACGAGAC' -A 'CTGTCTCTTATACACATCTGACGCTGCCGACGA' "
+    featureCounts: " --extraAttributes 'gene_name,gene_biotype' -s 1 -p -B "
+    bbduk:         "ktrim=r k=23 mink=11 hdist=1 tpe tbo"
+
+
+SE:
+    cutadapt:      " -m 20 -a 'CTGTCTCTTATACACATCTCCGAGCCCACGAGAC' "
+    featureCounts: " --extraAttributes 'gene_name,gene_biotype' -s 1 "
+    bbduk:         "ktrim=r k=23 mink=11 hdist=1 tpe tbo"
+
+BLACKLIST:
+  /beevol/home/wellskri/Analysis/ref/blacklist/mm10/mm10.blacklist.bed
+
+# Path to a file containing chromosome sizes to be used by HMMRATAC
+CHR_SIZE:
+  "files/GRCm38_chrsizes.txt"
+
+# Path to the HMMRATAC jar file
+HMMRATAC_FILE:
+  "/beevol/home/wellskri/packages/bin/HMMRATAC_V1.2.10_exe.jar"
+
+# Containers
+GENERAL_CONTAINER:
+  "docker/general_docker/cut_and_run.v1.sif"
+
+
+# The container for running picard tools
+PICARD_CONATINER:
+  "docker/picard_docker/picard.sif"
+
+# Path to picard jar file
+PICARD_JAR:
+  "docker/picard_docker/picard.jar"
+
+R_CONTAINER:
+  "docker/r_docker/atac_r.sif"
+
+# ATAC qc files
+# Provide the path to seq info and transcripts for your species
+SEQ_INFO:
+  "/beevol/home/wellskri/Analysis/ref/bioconductor/mm10_seq_info.rds"
+
+TRANSCRIPTS:
+  "/beevol/home/wellskri/Analysis/ref/bioconductor/mm10_transcripts.rds"
+
+BSGENOME:
+  "/beevol/home/wellskri/Analysis/ref/bioconductor/mm10_genome.rds"
