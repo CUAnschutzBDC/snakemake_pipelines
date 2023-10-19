@@ -109,6 +109,13 @@ rule make_bigwig_strand:
 			
 			# Run bam coverage on only reverse strand
 			bamCoverage -b {input} \
+				-o {output.rev} \
+				-p max/2 \
+				--binSize 5 \
+				--samFlagInclude 16 \
+				--effectiveGenomeSize 2652783500 \
+				--normalizeUsing RPKM
+		fi
 		"""
 
 rule bigwig_to_sandbox:

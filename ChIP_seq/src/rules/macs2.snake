@@ -13,6 +13,25 @@ def _get_input(wildcards):
 
     return(test_bam, control_bam)
 
+def _build_command(wildcards):
+    input_files = expand(
+            os.path.join(wildcards.results,
+                "macs2_" + wildcards.trim_method + "_trim",
+                "{sample}_peaks.narrowPeak"),
+            sample = SAMPLE_CONTROL.keys()
+            )
+
+    command = "bedtools intersect"
+    for i in range(len(input_files)):
+        if i == 0:
+            command += " -a " + input_files[i]
+        elif i == 1:
+            command += " -b " + input_files[i]
+        else:
+            command += " | bedtools intersect -a - -b " + input_files[i]
+
+    return(command)
+
 rule macs2:
     input:
         _get_input
@@ -35,10 +54,32 @@ rule macs2:
             file_type="BAMPE"
         else
             file_type="BAM"
+        fi
         macs2 callpeak \
             -t {input[0]} \
             -c {input[1]} \
             -g {params.genome_size} \
             -n {params.output_path} \
             -f $file_type
+        """
+
+rule overlapping_peaks:
+    input:
+        expand(
+            "{{results}}/macs2_{{trim_method}}_trim/{sample}_peaks.narrowPeak",
+            sample = SAMPLE_CONTROL.keys()
+            )
+    output:
+        "{results}/macs2_{trim_method}_trim/merged_peaks.narrowPeak"
+    params:
+        job_name = "macs2_merge",
+        memory   = "select[mem>30] rusage[mem=30]",
+        command  = _build_command
+    singularity:
+       GENERAL_CONTAINER    
+    log:
+       "{results}/logs/macs2/merged_{trim_method}_trim"
+    shell:
+        """
+        {params.command} > {output}
         """
