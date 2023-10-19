@@ -43,7 +43,9 @@ rule align:
         genome        = GENOME,
         gtf           = GTF,
         output_prefix = "{results}/star_{trim_method}_trim/{sample}_",
-        fastqs        = _get_input
+        fastqs        = _get_input,
+        temp_file     = "{results}/star_{trim_method}_trim/{sample}_Aligned.out.bam",
+        temp_location = "/tmp/{sample}"
     log:
         "{results}/logs/star/star_{sample}_{trim_method}_trim"
     message:
@@ -60,8 +62,11 @@ rule align:
             --sjdbGTFfile {params.gtf} \
             --readFilesIn {params.fastqs} \
             --readFilesCommand zcat \
-            --outSAMtype BAM SortedByCoordinate \
+            --outSAMtype BAM Unsorted \
             --outFileNamePrefix {params.output_prefix}
+
+        samtools sort {params.temp_file} -T {params.temp_location} > {output.bam_output}
+        rm {params.temp_file}
         """
 
 
