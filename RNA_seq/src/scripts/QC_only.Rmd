@@ -1,0 +1,372 @@
+---
+title: "Nkx2.2 timecourse"
+author: "Kristen Wells"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    highlight: "tango"
+    df_print: "paged"
+    code_folding: "hide"
+    self_contained: true
+params:
+  genome: "GRCm38"
+  DE_alpha: 0.05
+  DE_lfc: 1
+  counts: "results/nkx2.2_timecourse_countTable_cutadapt_trim.txt"
+  fastqc_one: "results/fastqc_pre_trim_summary_untrimmed.tsv"
+  fastqc_two: "results/fastqc_cutadapt_summary_trimmed.tsv"
+  star_stats: "results/star_summary_cutadapt_trim.tsv"
+  output_dir: "results/R_analysis_check"
+  sample_info: "files/sample_info.csv"
+  sample_column: "genotype"
+  comparisons:
+    value: 
+      - ["scramble", "etv1_kd"]
+      - ["scramble", "klf4_kd"]
+  genes:
+    value:
+      - "Etv1"
+      - "Klf4"
+      - "Arx"
+      - "Nkx6-1"
+      - "Nkx2-2"
+---
+
+```{r "Load packages and set options", include = F}
+library(knitr)
+library(cowplot)
+library(tidyverse)
+library(Matrix)
+library(pheatmap)
+library(ggrepel)
+library(gprofiler2)
+library(viridis)
+library(RColorBrewer)
+library(ashr)
+library(apeglm)
+library(openxlsx)
+library(DESeq2)
+library(pathview)
+library(KEGGREST)
+library(org.Mm.eg.db)
+library(LaCroixColoR)
+library(here)
+library(MetBrewer)
+
+# Set default chunk options
+opts_chunk$set(
+  message = F, 
+  warning = F,
+  comment = ""
+)
+
+```
+
+
+```{r "Load Theme"}
+source(here("src/scripts/functions.R"))
+
+################
+# Theme colors #
+################
+
+# Colors for heatmap (from the ArchR package)
+blueYellow <- c("#352A86", "#343DAE", "#0262E0", "#1389D2", "#2DB7A3",
+	"#A5BE6A", "#F8BA43", "#F6DA23", "#F8FA0D")
+
+# Colors for statistics
+fastqc_colors <- c("#e31a1c", "#238443", "#ec7014")
+
+star_colors <- c("#737373", "#8c6bb1", "#ec7014",
+                 "#e31a1c", "#238443", "#225ea8")
+```
+
+
+## Background
+This document goes through the analysis of the Chd4 KO at week 3 vs the control
+
+```{r, "Load in and set up data"}
+# Setup output dir
+output_directory <- here(params$output_dir)
+
+# Load in the files
+###############
+# Count table #
+###############
+# Read in the count table
+count_table <- read.table(here(params$counts), sep = "\t",
+                          row.names = 1, header = T)
+
+################
+# Sample table #
+################
+
+# Read in the sample table
+sample_table <- read.table(here(params$sample_info), sep = ",",
+                           header = T)
+
+rownames(sample_table) <- sample_table$Sample_name
+
+# Ensure the count table and sample table are in the same order
+count_table <- count_table[ , rownames(sample_table)]
+
+########
+# Star #
+########
+
+# Read in star stats
+star_stats <- read.table(here(params$star_stats), sep = "\t", row.names = 1,
+                         header = T)
+
+# Filter for mapping % and total read counts
+star_stats <- star_stats[grepl(
+  "%|Uniquely mapped reads|mapped to multiple loci",
+  rownames(star_stats)), ]
+
+star_stats <- star_stats[!grepl(
+  "^Mismatch|chimeric", rownames(star_stats)), ]
+
+# Calculate median size
+star_stats_median <- star_stats[grepl(
+  "Uniquely mapped reads", rownames(star_stats)), ]
+
+median_size <- median(as.numeric(
+  star_stats_median["Uniquely mapped reads number", ])) / 1000000
+
+median_rate <- median(as.numeric(str_remove(
+  star_stats_median["Uniquely mapped reads %", ], "%")))
+
+alignment_qual <- get_alignment_qual(median_rate)
+
+# Pull out all sample names
+samples <- colnames(star_stats)
+
+# Make a column of metrics
+star_stats$metric <- rownames(star_stats)
+
+# Make into long form for ggplot
+star_stats_long <- gather(star_stats, key = "Sample", value = "value",
+                          all_of(samples))
+
+
+# Add column for value type
+star_stats_long <- star_stats_long %>%
+  mutate(
+    value = as.numeric(str_remove(value, "%")),
+    val_type = ifelse(grepl("%", metric),
+                      "pct", "int")
+  )
+
+# Pull out read counts
+# Calculate median library size
+read_counts <- star_stats_long %>%
+  filter(grepl("mapped reads number", metric)) %>%
+  mutate(value = round(value / 1000000)) %>%
+  mutate(value = str_c(value, " million"))
+
+##########
+# FastQC #
+##########
+
+# Load in fastqc results
+fastqc_summary_one <- read.table(here(params$fastqc_one), sep = "\t")
+
+# Change the colnames
+colnames(fastqc_summary_one) <- c("Result", "Test", "Sample")
+
+# Update sample names
+fastqc_summary_one$Sample <- sub("_S[0-9]*_L[0-9]*_", "",
+                                 fastqc_summary_one$Sample)
+fastqc_summary_one$Sample <- sub("_001.fastq.gz", "",
+                                 fastqc_summary_one$Sample)
+
+# Load in fastqc results
+fastqc_summary_two <- read.table(here(params$fastqc_two), sep = "\t")
+
+# Change the colnames
+colnames(fastqc_summary_two) <- c("Result", "Test", "Sample")
+
+# Update sample names
+fastqc_summary_two$Sample <- sub("_trimmed.fastq.gz", "",
+                                 fastqc_summary_two$Sample)
+fastqc_summary_two$Sample <- sub("_trimmed.fastq.gz", "",
+                                 fastqc_summary_two$Sample)
+
+##############
+# Set colors #
+##############
+
+# Sample
+color_builder <- grDevices::colorRampPalette(colors = RColorBrewer::brewer.pal(n = 9, name = "Set1"))
+sample_colors <- color_builder(nrow(sample_table))
+
+names(sample_colors) <- rownames(sample_table)
+
+
+# Cassatt 1
+day_colors <- met.brewer(name="Cassatt1", n=4, type="discrete") %>%
+  as.character()
+
+names(day_colors) <- unique(sample_table$day)
+
+# Egypt for mutant/control
+group_colors <- met.brewer(name = "Egypt", n = 3, type = "discrete") %>%
+  as.character()
+names(group_colors) <- unique(sample_table$group)
+
+# Derain for batch 1
+genotype_colors <- met.brewer(name = "Derain", n = 2, type = "discrete")
+names(genotype_colors) <- unique(sample_table$genotype)
+
+```
+
+# Quality Control {.tabset}
+
+## FastQC Summary
+`FastQC` was used to assess the quality of each fastq file. A summary of the results is shown below. Overall, this is okay. I generally focus most on the per tile sequence quality, the per sequence quality scores, the per base sequence quality, sequence length distribution, and the adapter content. All of your sequencing quality look good. The adapter content fails, but I trimmed the adapters before aligning.
+
+There is also failures in the sequence duplication levels. I will check these out in the fastqc output, but this is pretty common with RNA-seq libraries.
+```{r "Create fastqc summary", fig.width = 8.5, fig.height = 3}
+fastqc_plot <- ggplot(data = fastqc_summary_one,
+                      mapping = aes(x = Sample,
+                                    y = Test,
+                                    fill = Result)) +
+  geom_tile(color = "white", size = 0.5) +
+  scale_fill_manual(values = fastqc_colors) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 8, color = "black"),
+    axis.title   = element_blank(),
+    axis.text    = element_text(size = 8, color = "black"),
+    axis.text.x  = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  )
+
+fastqc_plot
+```
+
+## FastQC after trimming Summary
+Here I've reapeated `Fastqc` after adapter trimming. You can ignore most of it, but I wanted to include this so that you could see that the adapters were successfully removed by my trimming with `cutadapt` (the bottom row).
+```{r "Create fastqc summary2", fig.width = 8.5, fig.height = 4}
+fastqc_plot <- ggplot(data = fastqc_summary_two,
+                      mapping = aes(x = Sample,
+                                    y = Test,
+                                    fill = Result)) +
+  geom_tile(color = "white", size = 0.5) +
+  scale_fill_manual(values = fastqc_colors) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 8, color = "black"),
+    axis.title   = element_blank(),
+    axis.text    = element_text(size = 8, color = "black"),
+    axis.text.x  = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  )
+
+fastqc_plot
+```
+
+## Alignment Summary
+Reads were aligned to the `r params$genome` genome using the `STAR` RNA-seq aligner. A summary of the results is shown below, the library size is displayed on each bar. The median library size was `r median_size` million reads and the median alignment rate was `r median_rate`. Overall, the alignment rate was **`r alignment_qual`**. 
+
+This alignment looks quite good to me. The percent mapping is pretty consistent between samples and is quite high.
+
+```{r "Create alignment summary", fig.width = 8.5, fig.height = 3}
+
+# Plot alignment stats
+star_stats_long_pct <- star_stats_long %>%
+  filter(val_type == "pct") %>%
+  
+  # Add median rates to metric label
+  mutate(
+    metric = str_remove(metric, "% of reads | reads %"),
+    metric = str_to_sentence(metric)
+  ) %>%
+  arrange(value) %>%
+  mutate(metric = fct_inorder(metric))
+  
+# Plot STAR alignment stats
+star_plot <- ggplot(data = star_stats_long_pct,
+                    mapping = aes(x = Sample,
+                                  y = value,
+                                  fill = metric)) +
+  geom_bar(stat = "identity", color = "white", size = 0.5) +
+  
+  # Label bars with library size
+  geom_text(
+    data = read_counts, 
+    aes(Sample, 50, label = value),
+    show.legend = F,
+    inherit.aes = F,
+    color = "white", 
+    angle = 90
+  ) +
+  
+  scale_fill_manual(
+    values = star_colors,
+    guide  = guide_legend(reverse = T)
+  ) +
+  scale_y_continuous(labels = function(x) {str_c(x, "%")}) +
+  theme_classic() +
+  theme(
+    legend.title = element_blank(),
+    legend.text  = element_text(size = 8, color = "black"),
+    axis.title   = element_blank(),
+    axis.text    = element_text(size = 8, color = "black"),
+    axis.text.x  = element_text(angle = 90, hjust = 1, vjust = 0.5)
+  )
+
+star_plot
+
+```
+
+
+## PCA
+Principal component analysis was performed to assess similarities between samples. Here I've made many plots to look at different technical effects in your data. 
+
+A) PCA colored by sample
+B) PCA colored by genotype
+C) PCA colored by day
+
+```{r "Run DESeq2 and create PCA plot", fig.width = 15, fig.height = 8}
+# This makes a DESeq2 object where the count data is our count matrix and the colData is our sample data. I am currently making the design based on "group" but we can change this if necessary
+sample_table$Sample_name <- factor(sample_table$Sample_name)
+sample_table$genotype <- factor(sample_table$genotype,
+                                levels = c("delta2_2", "Luc7"))
+sample_table$day <- factor(sample_table$day)
+
+dds <- DESeqDataSetFromMatrix(countData = count_table,
+                              colData = sample_table,
+                              design = formula(paste("~",
+                                                     params$sample_column)))
+# Here we get rid of all the genes that are not expressed
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds <- DESeq(dds)
+
+# This transforms the counts to have constant variance. This helps ensue that highly or lowly expressed genes will not contribute too much for the PCA or clustering analysis
+vsd <- vst(dds, blind = F)
+
+pc_1 <- plot_pca(vsd, group_by = "Sample_name", color_palette = sample_colors)
+pc_2 <- plot_pca(vsd, group_by = "genotype", color_palette = genotype_colors)
+pc_3 <- plot_pca(vsd, group_by = "day", color_palette = day_colors)
+pc_4 <- plot_pca(vsd, group_by = "group", color_palette = group_colors)
+
+
+plot_grid(pc_1, pc_2, pc_3, pc_4,
+          labels = c("A", "B", "C", "D"),
+          nrow = 2, ncol = 2,
+          align = "hv",
+          axis = "r",
+          label_y = 1,
+          label_x = 1)
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
