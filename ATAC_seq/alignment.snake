@@ -1,0 +1,277 @@
+# This runs star on the files from the samples document can be single or paired end
+
+# Function to return paths of input files
+def _get_input(wildcards):
+    if wildcards.trim_method == "no":    
+        # Grab path of the fastq file
+        fastq1 = SAMPLE_LIST.loc[wildcards.sample, "fastq1"]
+        data_dir = SAMPLE_LIST.loc[wildcards.sample, "data_dir"]
+        fastq1 = data_dir + "/" + fastq1
+        # Make sure file exists
+        fastq1  = _check_path(fastq1)
+        if IS_PAIRED:
+            # Grab path of second read
+            fastq2 = SAMPLE_LIST.loc[wildcards.sample, "fastq2"]
+            fastq2 = data_dir + "/" + fastq2
+            # Make sure file exists
+            fastq2 = _check_path(fastq2)
+            return(fastq1, fastq2)
+        else:
+            return(fastq1)
+    else:
+        fastq1 = (wildcards.results + "/" + wildcards.trim_method + "_trim/" +
+            wildcards.sample + "_R1_trimmed.fastq.gz")
+        if IS_PAIRED:
+            # Grab path of second read
+            fastq2 = (wildcards.results + "/" + wildcards.trim_method + "_trim/" +
+                wildcards.sample + "_R2_trimmed.fastq.gz")
+            return(fastq1, fastq2)
+        else:
+            return(fastq1)
+
+rule align:
+    input:
+        "{results}/{trim_method}_trim/{sample}.txt"
+    output:
+        bam_output = "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.sortedByCoord.out.bam",
+        bai_file   = "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.sortedByCoord.out.bam.bai",
+        log_output = "{results}/bowtie2_{trim_method}_trim/{sample}_metrics.out"
+    params:
+        job_name      = "{sample}_bowtie2",
+        memory        = "select[mem>60] rusage[mem=60]",
+        genome        = GENOME,
+        fastqs        = _get_input,
+        paired        = IS_PAIRED
+    singularity:
+       GENERAL_CONTAINER
+    log:
+        "{results}/logs/bowtie2/bowtie2_{sample}_{trim_method}_trim"
+    message:
+        "Aligning reads for {wildcards.sample}"
+    threads:
+        6
+    shell:
+        """
+        if [ {params.paired} ]
+        then
+            all_fastqs=({params.fastqs})
+            bowtie2 \
+                --very-sensitive \
+                -k 10 \
+                -x {params.genome} \
+                --threads {threads} \
+                --rg-id {wildcards.sample} \
+                --rg 'SM:{wildcards.sample}' \
+                --met-file {output.log_output} \
+                -1 ${{all_fastqs[0]}} \
+                -2 ${{all_fastqs[1]}} | \
+                samtools view -b - | \
+                samtools sort -o {output.bam_output} -
+
+        else
+            bowtie2 \
+                --very-sensitive \
+                -k 10 \
+                -x {params.genome} \
+                --threads {threads} \
+                --rg-id {wildcards.sample} \
+                --rg 'SM:{wildcards.sample}' \
+                --met-file {output.log_output} \
+                -U {params.fastqs} | \
+                samtools view -b - | \
+                samtools sort -o {output.bam_output} -
+
+
+        fi
+
+        samtools index {output.bam_output}
+        """
+
+# rule remove_duplicate_reads:
+#     input:
+#         "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.sortedByCoord.out.bam"
+#     output:
+#         bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam",
+#         bai = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam.bai",
+#         mt_bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam",
+#         mt_bai = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam.bai",
+#     params:
+#         job_name  = "{sample}_remove_dup",
+#         memory    = "select[mem>60] rusage[mem=60]",
+#         out_pre   = "{results}/bowtie2_{trim_method}_trim/{sample}",
+#         temp_file = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup_tmp.bam",
+#         mapq_threshold = 20
+#     singularity:
+#        GENERAL_CONTAINER
+#     log:
+#         "{results}/logs/remove_duplicate_reads/remove_dup_{sample}_{trim_method}_trim"
+#     shell:
+#         """
+#         # Remove mapping to mitochondria
+#         samtools idxstats {input} \
+#             | cut -f 1 \
+#             | grep -v MT \
+#             | xargs samtools view \
+#             -b {input} > {output.mt_bam}
+
+#         samtools index {output.mt_bam}
+
+#         # Remove duplicates
+#         samtools sort -n -O BAM -T {params.out_pre} {output.mt_bam} \
+#            | samtools fixmate -m - - \
+#            | samtools sort -T {params.out_pre}_second - \
+#            | samtools markdup -r -s - {params.temp_file}
+
+#         samtools index {params.temp_file}
+
+
+#         # From Greenleaf lab protocol
+#         # -F 1804: exclude flag, exludes unmapped, next segment unmapped,
+#         # secondary alignments, not passing platform q, PCR or optical duplicates
+#         # -f 2: flags to require, properly aligned
+#         # -q 20: exlude low MAPQ, set as parameter to adjust
+#         samtools view \
+#             -F 1804 \
+#             -f 2 -q {params.mapq_threshold} -b {params.temp_file} > {output.bam}
+
+#         rm {params.temp_file}
+#         rm {params.temp_file}.bai
+
+
+#         samtools index {output.bam}
+#         """
+
+
+rule remove_mito:
+    input:
+        "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.sortedByCoord.out.bam"
+    output:
+        mt_bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam",
+        mt_bai = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam.bai"
+    params:
+        job_name  = "{sample}_remove_dup",
+        memory    = "select[mem>60] rusage[mem=60]",
+    singularity:
+       GENERAL_CONTAINER
+    log:
+        "{results}/logs/remove_mito/remove_mito_{sample}_{trim_method}_trim"
+    shell:
+        """
+        # Remove mapping to mitochondria
+        samtools idxstats {input} \
+            | cut -f 1 \
+            | grep -v MT \
+            | xargs samtools view \
+            -b {input} > {output.mt_bam}
+
+        samtools index {output.mt_bam}
+        """
+
+
+rule mark_duplicates:
+    input:
+        mt_bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam",
+        mt_bai = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam.bai",
+    output:
+        dup_bam = "{results}/bowtie2_{trim_method}_trim/{sample}_mark_dup.bam",
+        picard_metrics = "{results}/bowtie2_{trim_method}_trim/{sample}_picard_dupMark.txt"
+    params:
+        job_name  = "{sample}_remove_dup",
+        memory    = "select[mem>60] rusage[mem=60]",
+        picard_jar = PICARD_JAR,
+        temp_file  = "{results}/bowtie2_{trim_method}_trim/{sample}_dup_temp.bam"
+    singularity:
+       PICARD_CONTAINER
+    log:
+        "{results}/logs/mark_duplicate_reads/mark_dup_{sample}_{trim_method}_trim"
+    shell:
+        """
+        # Sort sam
+        java -jar {params.picard_jar} SortSam \
+            -I {input.mt_bam} -O {params.temp_file} \
+            -SO coordinate
+
+        # Mark duplicates
+        java -jar {params.picard_jar} MarkDuplicates \
+            -I {params.temp_file} -O {output.dup_bam} \
+            --METRICS_FILE {output.picard_metrics}
+
+        rm {params.temp_file}
+        """
+
+rule remove_duplicate_reads:
+    input:
+        "{results}/bowtie2_{trim_method}_trim/{sample}_mark_dup.bam"
+    output:
+        bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam",
+        bai = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam.bai",
+        dup_bai = "{results}/bowtie2_{trim_method}_trim/{sample}_mark_dup.bam.bai"
+    params:
+        job_name  = "{sample}_remove_dup",
+        memory    = "select[mem>60] rusage[mem=60]",
+        mapq_threshold = 20
+    singularity:
+       GENERAL_CONTAINER
+    log:
+        "{results}/logs/remove_duplicate_reads/remove_dup_{sample}_{trim_method}_trim"
+    shell:
+        """
+        samtools index {input}
+
+        # From tutorial https://cambiotraining.github.io/chipseq/Practicals/ATACseq/ATACseq_tutorial.html
+        # -f 3: only include alignments marked with the SAM flag 3, which means “properly paired and mapped”
+        # -F 4: exclude aligned reads with flag 4: the read itself did not map
+        # -F 8: exclude aligned reads with flag 8: their mates did not map
+        # -F 256: exclude alignments with flag 256, which means that Bowtie mapped the read to multiple 
+        # places in the reference genome, and this alignment is not the best
+        # -F 1024: exclude alignments marked with SAM flag 1024, which indicates that the read is an optical 
+        # or PCR duplicate (this flag would be set by Picard)
+        # -F 2048: exclude alignments marked with SAM flag 2048, indicating chimeric alignments, where 
+        # Bowtie decided that parts of the read mapped to different regions in the genome. These records 
+        # are the individual aligned segments of the read. They usually indicate structural variation. 
+        # We’re not going to base peak calls on them.
+        # Finally, we use a basic quality filter, -q 15, to request high-quality alignments.
+        samtools view \
+            -b -h \
+            -f 3 \
+            -F 4 \
+            -F 8 \
+            -F 256 \
+            -F 1024 \
+            -F 2048 \
+            -q params.mapq_threshold \
+            -o {output.bam} \
+            {input}
+
+        samtools index {output.bam}
+        """
+
+# Get alignment stats
+rule aligment_stats:
+    input:
+        expand(
+            "{{results}}/bowtie2_{{trim_method}}_trim/{sample}_Aligned.sortedByCoord.out.bam",
+            sample = SAMPLES
+            )
+    output:
+        "{results}/bowtie2_{trim_method}_trim/bowtie_stats_finished.txt"
+    params:
+        job_name = "bowtie_stats",
+        memory   = "select[mem>4] rusage[mem=4]",
+        out_dir  = "{results}/bowtie2_{trim_method}_trim",
+        in_dir   = "{results}/logs/bowtie2"
+    singularity:
+       GENERAL_CONTAINER
+    log:
+        "{results}/logs/bowtie2_stats/stats_{trim_method}"
+    threads:
+        1
+    shell:
+        """
+        python src/scripts/get_bowtie_stats.py \
+            -d {params.in_dir} \
+            -o {params.out_dir} \
+            -t {wildcards.trim_method}
+
+        echo "finished" > {output}
+        """
