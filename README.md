@@ -1,6 +1,7 @@
 # Analysis pipelines
 Writen by Kristen Wells
 
+*These pipelines are depreciated, please see our [updated repo](https://github.com/CUAnschutzBDC/slurm_snakemake) for most up to date pipelines*
 A collection of snakemake pipelines to analyze RNA datasets. Current pipelines include:
 
 * A scRNA-sequencing pipeline that analyzed 10x genomics datasets. Can be used with scRNA-seq, scCITE-seq, scVDJ-seq, and hashtagging (and any combination of those).
