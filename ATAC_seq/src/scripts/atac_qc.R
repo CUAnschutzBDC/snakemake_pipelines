@@ -5,20 +5,20 @@ library(Rsamtools)
 library(tidyverse)
 library(ChIPpeakAnno)
 
-bamfile <- snakemake@input[[1]]
+bamfile <- snakemake@params[["mt_bam"]]
 #dedup_bamfile <- snakemake@input[[1]]
-dedup_bamfile <- snakemake@input[[2]]
-print(bamfile)
-out_dir <- snakemake@params["output_directory"] # one directory for each sample
-out_dir_plots <- snakemake@params["output_plot_dir"]
-sample <- snakemake@wildcards["sample"]
+dedup_bamfile <- snakemake@params[["dup_file"]]
+
+out_dir <- snakemake@params[["output_directory"]] # one directory for each sample
+out_dir_plots <- snakemake@params[["output_plot_dir"]]
+sample <- snakemake@wildcards[["sample"]]
+
 tss_output <- snakemake@output$tss_score
 seqinformation <- readRDS(snakemake@params$seq_info)
 genome <- readRDS(snakemake@params$bsgenome)
 txs <- readRDS(snakemake@params$transcripts)
 
 ggplot2::theme_set(ggplot2::theme_classic(base_size = 10))
-
 
 # out_dir <- "/beevol/home/wellskri/Analysis/Lori_Sussel/Maria_Hansen/220708_bulk_atac/results/atac_qc"
 # bamfile <- "/beevol/home/wellskri/Analysis/Lori_Sussel/Maria_Hansen/220708_bulk_atac/results/bowtie2_cutadapt_trim/KO_2_Aligned.sortedByCoord.out.bam"

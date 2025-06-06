@@ -26,13 +26,14 @@ rule find_downsample_val:
     output:
         "{results}/downsampling_{trim_method}/downsampling_values.csv"
     params:
-        job_name = "downsample",
-        memory   = "select[mem>4] rusage[mem=4]",
         samples  = SAMPLES
     singularity:
         R_CONTAINER
-    log:
-        "{results}/logs/downsampling/downsampling_values_{trim_method}_trim"
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/downsample_val/downsample_val_{wildcards.trim_method}_trim.out "
+            f"--error={wildcards.results}/logs/downsample_val/downsample_val_{wildcards.trim_method}_trim.err"
+        )
     shell:
         """
         Rscript --vanilla src/scripts/find_downsample_val.R {output} {input}
@@ -41,21 +42,23 @@ rule find_downsample_val:
 rule downsample_bams:
     input:
         downsample_vals = "{results}/downsampling_{trim_method}/downsampling_values.csv",
-        input_bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam"
+        mito_input =  "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.txt"
     output:
         bam = "{results}/downsampling_{trim_method}/{sample}_downsampled.bam",
         bai = "{results}/downsampling_{trim_method}/{sample}_downsampled.bam.bai"
     params:
-        job_name = "downsample_{sample}",
-        memory   = "select[mem>50] rusage[mem=50]",
-        downsample_command = _get_value
+        downsample_command = _get_value,
+        input_bam = os.path.join(RESULTS2, "bowtie2_{trim_method}_trim/{sample}_remove_mt.bam")
     singularity:
         GENERAL_CONTAINER
-    log:
-        "{results}/logs/downsampling/{sample}_downsample_{trim_method}_trim"
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/downsample/downsample_{wildcards.sample}_{wildcards.trim_method}_trim.out "
+            f"--error={wildcards.results}/logs/downsample/downsample_{wildcards.sample}_{wildcards.trim_method}_trim.err"
+        )
     shell:
         """
-        samtools view {input.input_bam} \
+        samtools view {params.input_bam} \
             {params.downsample_command} \
             -o {output.bam}
 

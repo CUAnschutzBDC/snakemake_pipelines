@@ -44,7 +44,7 @@ rule bbduk:
         "{results}/logs/trimming/bbduk_{sample}"
     shell:
         """
-        if [ {params.paired} ]
+        if {params.paired}
         then
             bbduk.sh \
                 in1   = {input.input_list[0]} \
@@ -78,6 +78,7 @@ rule cutadapt:
         settings  = CMD_PARAMS["cutadapt"],
         fastq1    = "{results}/cutadapt_trim/{sample}_R1_trimmed.fastq.gz",
         fastq2    = "{results}/cutadapt_trim/{sample}_R2_trimmed.fastq.gz",
+        out_dir   = os.path.join(RESULTS2, "cutadapt_trim"),
         paired    = IS_PAIRED
     singularity:
        GENERAL_CONTAINER
@@ -89,7 +90,8 @@ rule cutadapt:
         1
     shell:
         """
-        if [ {params.paired} ]
+        mkdir -p {params.out_dir}
+        if [ "{params.paired}" = "True" ]
         then
             cutadapt \
                 {params.settings} \

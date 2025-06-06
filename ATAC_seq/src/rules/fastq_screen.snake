@@ -1,0 +1,97 @@
+def _get_fastqs(wildcards):
+    if merge_fastq:
+        # Make a list of the merged fastqs
+        all_fastqs = []
+        for sample in SAMPLES:
+            fastq_file = os.path.join(RESULTS2, "merged_fastqs", sample + "_R1.fastq.gz")
+            #fastq_file = _check_path(fastq_file)
+            all_fastqs.append(fastq_file)
+        return(all_fastqs)
+    else:
+        # Grab path of the fastq file
+        return(SAMPLE_LIST.apply(_join_paths, axis=1).to_list())
+
+def _join_paths(row):
+    data_dir = row["data_dir"]
+    fastq1 = row["fastq1"]
+    return os.path.join(data_dir, fastq1)
+
+def _get_config(wildcards):
+    # Either grabs the provided config file or the config file
+    # made by downloading fastq screen
+    if os.path.isdir(FASTQ_SCREEN_DATA):
+        return(os.path.join(FASTQ_SCREEN_DATA, "FastQ_Screen_Genomes", "fastq_screen.conf"))
+    elif os.path.isfile(FASTQ_SCREEN_DATA):
+        return(FASTQ_SCREEN_DATA)
+    else:
+        sys.exit(f"{FASTQ_SCREEN_DATA} does not exist")
+
+rule make_genomes:
+    output:
+        os.path.join(FASTQ_SCREEN_DATA, "FastQ_Screen_Genomes", "fastq_screen.conf")
+    params:
+        out_dir = FASTQ_SCREEN_DATA
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/fastq_screen/fastq_screen_genome_trim.out "
+            f"--error={wildcards.results}/logs/fastq_screen/fastq_screen_genome_trim.err"
+        )
+    singularity:
+       FASTQ_SCREEN
+    message:
+        "Generating fastq screen genome"
+    threads:
+        1
+    shell:
+        """
+        cd {params.out_dir}
+		fastq_screen --get_genomes
+        """
+
+
+rule fastq_screen:
+    input:
+        config = _get_config
+    output:
+        completed_file = "{results}/fastq_screen/fastq_screen_done.txt"
+    params:
+        out_dir = "{results}/fastq_screen",
+        fastqs  = _get_fastqs
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/fastq_screen/fastq_screen_align.out "
+            f"--error={wildcards.results}/logs/fastq_screen/fastq_screen_align.err"
+        )
+    singularity:
+       FASTQ_SCREEN
+    message:
+        "Running fastq screen"
+    shell:
+        """
+        fastq_screen \
+            --conf {input.config} \
+            --outdir {params.out_dir} \
+            {params.fastqs} 
+        touch {output}
+        """
+
+rule fastq_screen_plot:
+    input:
+        "{results}/fastq_screen/fastq_screen_done.txt"
+    output:
+        "{results}/fastq_screen/fastq_screen_barplot.pdf"
+    params:
+        out_dir = "{results}/fastq_screen"
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/fastq_screen/fastq_screen_plot.out "
+            f"--error={wildcards.results}/logs/fastq_screen/fastq_screen_plot.err"
+        )
+    singularity:
+       R_CONTAINER
+    message:
+        "Running fastq screen"
+    shell:
+        """
+        Rscript src/scripts/fastq_screen.R {params.out_dir}
+        """

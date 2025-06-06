@@ -16,7 +16,7 @@ count_obj <- snakemake@output[["count_obj"]]
 wildcards <- snakemake@wildcards
 
 # Set peak caller type
-if(wildcards[["peak_caller"]] == "macs2"){
+if(wildcards[["peak_caller"]] == "macs3"){
   peakcaller <- "narrow"
 } else if (wildcards[["peak_caller"]] == "hmmratac"){
   peakcaller <- "bed"

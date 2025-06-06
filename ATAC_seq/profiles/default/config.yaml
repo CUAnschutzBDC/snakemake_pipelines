@@ -1,0 +1,70 @@
+executor: slurm
+#executor: cluster-generic
+#cluster-generic-submit-cmd: sbatch -t {params.res_time} --cpus-per-task {threads} --mem-per-cpu {params.res_mem} -o {params.lsf_log}
+
+use-apptainer: True
+#apptainer-args: "\"--bind /scratch/alpine --bind /pl/active/AnschutzBDC\""
+
+
+default-resources:
+    slurm_partition: "amilan"
+    slurm_account:   "amc-general"
+
+set-resources:
+    fastq_screen:
+        runtime: 720
+        mem: "4GB"
+    fastqc:
+        runtime: 60
+        mem: "4GB"
+    fastqc_trim:
+        runtime: 60
+        mem: "4GB"
+    fastqc_summary:
+        runtime: 10
+        mem: "4GB"
+    bbduk:
+        runtime: 180
+        mem: "4GB"
+    cutadapt:
+        runtime: 180
+        mem: "4GB"
+    no_trim:
+        runtime: 5
+        mem: "1GB"
+    align:
+        runtime: 360 
+        mem: "60GB"
+        tasks: 1
+        cpus_per_task: 6
+        nodes: 1
+    aligment_stats:
+        runtime: 30
+        mem: "1GB"
+    remove_mito:
+        runtime: 120
+        mem: "60GB"
+    mark_duplicates:
+        runtime: 180
+        mem: "60GB"
+    remove_duplicate_reads:
+        runtime: 120
+        mem: "60GB"
+    dup_stats:
+        runtime: 10
+        mem: "1GB"
+    macs2:
+        runtime: 180
+        mem: "30GB"
+    overlapping_peaks:
+        runtime: 180
+        mem: "30GB"
+    make_bigwig:
+        runtime: 180
+        mem: "40GB"
+    make_sample_sheet: 
+        runtime: 30
+        mem: "5GB"
+    merge_fastq:
+        runtime: 30
+        mem: "3GB"

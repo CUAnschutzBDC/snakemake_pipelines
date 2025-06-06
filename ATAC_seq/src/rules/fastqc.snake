@@ -76,6 +76,7 @@ rule fastqc:
         "{results}/logs/fastqc_pre_trim/fastqc_{sample}_untrimmed"
     shell:
         """
+        mkdir -p {params.output_dir}
         fastqc {input} --outdir {params.output_dir}
         for dir in {params.directories};
         do
@@ -107,6 +108,7 @@ rule fastqc_trim:
         then
             echo "no trimming done" > {output}
         else
+            mkdir -p {params.output_dir}
             fastqc {params.input_list} --outdir {params.output_dir}
             for dir in {params.directories};
             do

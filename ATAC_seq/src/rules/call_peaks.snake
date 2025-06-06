@@ -4,46 +4,10 @@ def _get_file_type(wildcards):
     else:
         return("BAM")
 
-rule call_peaks:
-    input:
-        "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam"
-    output:
-        broad = "{results}/macs2_{trim_method}_trim/{sample}_peaks.broadPeak",
-        narrow = "{results}/macs2_{trim_method}_trim/{sample}_peaks.narrowPeak"
-    params:
-        job_name  = "{sample}_macs2",
-        memory    = "select[mem>60] rusage[mem=60]",
-        outdir    = "{results}/macs2_{trim_method}_trim",
-        file_type = _get_file_type
-    singularity:
-       GENERAL_CONTAINER
-    log:
-        "{results}/logs/macs2/macs2_{sample}_{trim_method}_trim"
-    threads:
-        6
-    shell:
-        """
-        macs2 callpeak \
-            -t {input} \
-            -q 0.05 \
-            --broad \
-            -f {params.file_type} \
-            -n {wildcards.sample} \
-            --outdir {params.outdir}
-
-        macs2 callpeak \
-            -t {input} \
-            -q 0.05 \
-            -f {params.file_type} \
-            -n {wildcards.sample} \
-            --outdir {params.outdir}
-
-        """
-
 rule frip:
     input:
         bam = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam",
-        peaks = "{results}/macs2_{trim_method}_trim/{sample}_peaks.narrowPeak"
+        peaks = "{results}/macs3_{trim_method}_trim/{sample}_peaks.narrowPeak"
     output:
         count_file = "{results}/featureCounts_{trim_method}_trim/{sample}_counts.txt",
         summary    = "{results}/featureCounts_{trim_method}_trim/{sample}_counts.txt.summary"

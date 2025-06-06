@@ -1,0 +1,49 @@
+def get_fastq(sample_table, read, sample):
+	r1_dict = defaultdict(list)
+	r2_dict = defaultdict(list)
+	sample_info = pd.read_table(sample_table).set_index("sample", drop = False)
+	for index, row in sample_info.iterrows():
+		fastq1 = os.path.join(row["data_dir"], row["fastq1"])
+		fastq2 = os.path.join(row["data_dir"], row["fastq2"])
+		r1_dict[row["sample"]].append(fastq1)
+		r2_dict[row["sample"]].append(fastq2)
+
+	if read == "R1":
+		return(r1_dict[sample])
+	elif read == "R2":
+		return(r2_dict[sample])
+
+def _get_r1_fastq(wildcards):
+	return(get_fastq(config["SAMPLE_TABLE"], "R1", wildcards.sample))
+
+def _get_r2_fastq(wildcards):
+	return(get_fastq(config["SAMPLE_TABLE"], "R2", wildcards.sample))
+
+
+rule merge_fastq:
+	output:
+		"{results}/merge_fastqs/{sample}_merged_fastqs.txt"
+	params:
+		sample_sheet = config["SAMPLE_TABLE"],
+		out_dir      = os.path.join(RESULTS2, "merged_fastqs"),
+		R1_fastqs    = _get_r1_fastq,
+		R2_fastqs    = _get_r2_fastq,
+		R1_out       = os.path.join(RESULTS2, "merged_fastqs", "{sample}_R1.fastq.gz"),
+		R2_out       = os.path.join(RESULTS2, "merged_fastqs", "{sample}_R2.fastq.gz"),
+	resources:
+		slurm_extra=lambda wildcards: (
+			f"--output={wildcards.results}/logs/merge_fastq/{wildcards.sample}_merge_fastq.out "
+			f"--error={wildcards.results}/logs/merge_fastq/{wildcards.sample}_merge_fastq.err"
+		)
+	singularity:
+		GENERAL_CONTAINER
+	message:
+		"Merging fastq files"
+	threads:
+		8
+	shell:
+		"""
+		cat {params.R1_fastqs} > {params.R1_out}
+		cat {params.R2_fastqs} > {params.R2_out}
+		touch {output}
+		"""

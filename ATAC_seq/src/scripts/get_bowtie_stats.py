@@ -9,7 +9,9 @@ def main():
 	if not os.path.exists(options.out_dir):
 		os.makedirs(options.out_dir)
 
-	read_files(options.in_dir, options.out_dir, options.trim_method)
+	out_file = os.path.join(options.out_dir, "bowtie2_stats.csv")
+	full_dict = read_files(options.in_dir, options.trim_method)
+	write_output(full_dict, out_file)
 
 #########
 # Setup #
@@ -49,11 +51,19 @@ def setup():
 # Functions #
 #############
 
-def read_files(in_dir, out_dir, trim_method):
+def read_files(in_dir, trim_method):
+	"""
+	This reads the log files output by bowtie2 to determine the alignment rates of reads
+	
+	The output is a layered dictionary. The inner layer is information per sample,
+	all of these inner dicts are layered into a full dict where sample is the key.
+	"""
 	files = glob.glob(in_dir + "/*.err")
+	full_dict = {}
 	for file in files:
 		sample = re.sub("_" + trim_method + "_trim.err", "", file.split("/")[-1])
-		output_file = os.path.join(out_dir, sample + "_bowtie_stats.csv")
+		sample = re.sub("bowtie2_", "", sample)
+		#output_file = os.path.join(out_dir, sample + "_bowtie_stats.csv")
 		sample_dict = {}
 		with open(file, "r") as in_file:
 			for line in in_file:
@@ -74,19 +84,24 @@ def read_files(in_dir, out_dir, trim_method):
 					sample_dict["multi_alignment_percent"] = save_line[1]
 				elif "overall alignment rate" in line:
 					sample_dict["overall_alignment"] = save_line[0]
-		with open(output_file, "w") as out_file:
-			out_file.write("total_reads,paired_reads,paired_percent,no_alignment,no_alignment_percent,one_alignment,one_alignment_percent,multi_alignment,multi_alignment_percent,overall_alignment\n")
+		full_dict[sample] = sample_dict
+	return(full_dict)
 
-			out_file.write("{},{},{},{},{},{},{},{},{},{}\n".format(sample_dict["total_reads"],
-				                                                    sample_dict["paired_reads"],
-				                                                    sample_dict["paired_percent"],
-				                                                    sample_dict["no_alignment"],
-				                                                    sample_dict["no_alignment_percent"],
-				                                                    sample_dict["one_alignment"],
-				                                                    sample_dict["one_alignment_percent"],
-				                                                    sample_dict["multi_alignment"],
-				                                                    sample_dict["multi_alignment_percent"],
-				                                                    sample_dict["overall_alignment"]))
+def write_output(full_dict, output_file):
+	"""
+	Here the dictionary created by read_files is written to an output file.
+	"""
+	with open(output_file, "w") as out_file:
+		out_file.write("sample,total_reads,paired_reads,paired_percent,no_alignment,no_alignment_percent,one_alignment,one_alignment_percent,multi_alignment,multi_alignment_percent,overall_alignment\n")
+
+		for sample in full_dict:
+			sample_dict = full_dict[sample]
+			out_file.write("{},{},{},{},{},{},{},{},{},{},{}\n".format(
+				sample, sample_dict["total_reads"], sample_dict["paired_reads"],
+				sample_dict["paired_percent"], sample_dict["no_alignment"],
+				sample_dict["no_alignment_percent"], sample_dict["one_alignment"],
+				sample_dict["one_alignment_percent"], sample_dict["multi_alignment"],
+				sample_dict["multi_alignment_percent"], sample_dict["overall_alignment"]))
 
 
 if __name__ == "__main__":

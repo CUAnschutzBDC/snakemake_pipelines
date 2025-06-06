@@ -1,0 +1,10 @@
+Bootstrap: docker
+From: kwellswrasman/atac_chip:v1
+
+%environment
+    # This will be sourced in all runs
+    . /shell-hook.sh
+
+%runscript
+    # This is the command run when you call the container
+    exec "$@"

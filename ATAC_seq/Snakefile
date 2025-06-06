@@ -10,8 +10,19 @@ import re
 import pandas as pd
 from collections import defaultdict
 
+# Function to check paths for input files/directories
+def _check_path(path):
+    if os.path.exists(path):
+        return os.path.abspath(path)
+    else:
+        sys.exit("ERROR: " + path + " does not exist.")
+
+# Set apptainer bindings NOT A PERMANENT SOLUTION
+os.environ["APPTAINER_BIND"] = "/scratch/alpine:/scratch/alpine,/pl/active/Anschutz_BDC:/pl/active/Anschutz_BDC,/tmp:/tmp"
 
 # Parameters from config.yaml
+SCRATCH_DIR       = config["SCRATCH_DIR"]
+BASE_PATH         = config["BASE_PATH"]
 SAMPLE_TABLE  = config["SAMPLE_TABLE"]
 GENOME        = config["GENOME"]
 GTF           = config["GTF"]
@@ -22,18 +33,43 @@ PROJECT       = config["PROJECT"]
 BLACKLIST     = config["BLACKLIST"]
 CHR_SIZE      = config["CHR_SIZE"]
 HMMRATAC_FILE = config["HMMRATAC_FILE"]
+GENOME_SIZE       = config["GENOME_SIZE"]
 GENERAL_CONTAINER = config["GENERAL_CONTAINER"]
 R_CONTAINER   = config["R_CONTAINER"]
 SEQ_INFO      = config["SEQ_INFO"]
 TRANSCRIPTS   = config["TRANSCRIPTS"]
 BSGENOME      = config["BSGENOME"]
-PICARD_CONTAINER  = config["PICARD_CONATINER"]
-PICARD_JAR        = config["PICARD_JAR"]
+QVALUE            = config["QVALUE"]
+PICARD_CONTAINER  = config["PICARD_CONTAINER"]
+PICARD_JAR        = "$PICARD"
+FASTQ_SCREEN      = config["FASTQ_SCREEN"]
+FASTQ_SCREEN_DATA = config["FASTQ_SCREEN_DATA"]
+
+# Make the desired path in scratch
+#user_variable = os.environ.get('USER')
+scratch_dir = SCRATCH_DIR
+
+
+current_dir = os.getcwd()
+rel_path_to_home = os.path.relpath(current_dir, start=BASE_PATH)
+
+RESULTS2 = os.path.join(scratch_dir, rel_path_to_home, RESULTS)
+os.makedirs(RESULTS2, exist_ok = True)
+
+# Make fastq screen dir
+if os.path.isdir(FASTQ_SCREEN_DATA):
+    os.makedirs(FASTQ_SCREEN_DATA, exist_ok = True)
 
 # Pull out sample names and fastq files
 SAMPLE_LIST = pd.read_table(config["SAMPLE_TABLE"]).set_index("sample", drop = False)
 SAMPLES = SAMPLE_LIST.index.values
 IS_PAIRED = "fastq2" in SAMPLE_LIST.columns
+
+# Determine if fastq files need to be merged first
+if any(SAMPLE_LIST.duplicated(subset = ["sample"])):
+    merge_fastq = True
+else:
+    merge_fastq = False
 
 # Pull out if there are any samples with spike-ins
 if "spike_in" in SAMPLE_LIST.columns:
@@ -47,15 +83,6 @@ if IS_PAIRED:
     CMD_PARAMS = config["PE"]
 else:
     CMD_PARAMS = config["SE"]
-
-# Function to check paths for input files/directories
-def _check_path(path):
-    if os.path.exists(path):
-        return os.path.abspath(path)
-    else:
-        sys.exit("ERROR: " + path + " does not exist.")
-
-
 
 # Set sample/group names
 SAMPLES = [x.strip() for x in SAMPLES]
@@ -97,9 +124,14 @@ rule all:
             ),
         # Bowtie2 output
         expand(
-            "{results}/bowtie2_{trim_method}_trim/{sample}_Aligned.sortedByCoord.out.bam",
+            "{results}/bowtie2_{trim_method}_trim/{sample}_done.txt",
             results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
             ),
+        # Bowtie2 stats
+        expand(
+            "{results}/bowtie2_{trim_method}_trim/bowtie_stats_finished.txt",
+            results = RESULTS, trim_method = TRIM_METHOD
+        ),
         # Make QC plots
         expand(
             "{results}/atac_qc_{trim_method}_trim/{sample}/plots/tss_enrichment_by_nucleosome.pdf",
@@ -107,13 +139,18 @@ rule all:
             ),
 
         # Call peaks - macs
-        expand(
-             "{results}/macs2_{trim_method}_trim/{sample}_peaks.broadPeak",
-             results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
-            ),
+        #expand(
+        #     "{results}/macs2_{trim_method}_trim/{sample}_peaks.broadPeak",
+        #     results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
+        #    ),
         expand(
             "{results}/featureCounts_{trim_method}_trim/combined_frip.tsv",
             results = RESULTS, trim_method = TRIM_METHOD
+            ),
+        # Call peaks
+        expand(
+            "{results}/macs3_{trim_method}_trim/{sample}_peaks.narrowPeak",
+            results = RESULTS, trim_method = TRIM_METHOD, sample = SAMPLES
             ),
 
         # Call peaks - hmmratac
@@ -125,7 +162,7 @@ rule all:
         # Diff bind
         expand(
             "{results}/{peak_caller}_diffbind_{trim_method}_trim/count_obj.rds",
-            results = RESULTS, trim_method = TRIM_METHOD, peak_caller = ["macs2", "hmmratac"]
+            results = RESULTS, trim_method = TRIM_METHOD, peak_caller = ["macs3", "hmmratac"]
             ),
 
         # Downsample
@@ -146,3 +183,4 @@ include: "src/rules/alignment.snake"
 include: "src/rules/qc_plots.snake"
 include: "src/rules/call_peaks.snake"
 include: "src/rules/downsample.snake"
+include: "src/rules/macs3.snake"

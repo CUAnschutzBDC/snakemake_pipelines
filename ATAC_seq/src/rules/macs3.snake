@@ -1,0 +1,39 @@
+# Runs Macs2
+
+rule macs3:
+    input:
+        "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam"
+    output:
+        "{results}/macs3_{trim_method}_trim/{sample}_peaks.narrowPeak"
+    params:
+        genome_size = GENOME_SIZE,
+        paired      = IS_PAIRED,
+        output_path = "{results}/macs3_{trim_method}_trim",
+        output_name = "{sample}",
+        qvalue      = QVALUE,
+        temp_dir    = os.path.join(RESULTS2, "bowtie2_{trim_method}_trim", "{sample}")
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/macs3/macs3_{wildcards.sample}_{wildcards.trim_method}_trim.out "
+            f"--error={wildcards.results}/logs/macs3/macs3_{wildcards.sample}__{wildcards.trim_method}_trim.err"
+        )
+    singularity:
+       GENERAL_CONTAINER    
+    shell:
+        """
+        mkdir -p {params.temp_dir}
+        if [ {params.paired} == "True" ]
+        then
+            file_type="BAMPE"
+        else
+            file_type="BAM"
+        fi
+        macs3 callpeak \
+            -t {input[0]} \
+            -g {params.genome_size} \
+            -n {params.output_name} \
+            -f $file_type \
+            -q {params.qvalue} \
+            --outdir {params.output_path} \
+            --tempdir {params.temp_dir}
+        """

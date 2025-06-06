@@ -1,35 +1,46 @@
-# Get base image
-FROM bioconductor/bioconductor_docker:RELEASE_3_16
+FROM ghcr.io/prefix-dev/pixi:0.40.0 AS build
 
-# environment
-ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-ENV PATH $PATH:/opt/conda/bin
-ENV RENV_VERSION 0.16.0
+# copy source code, pixi.toml and pixi.lock to the container
+COPY . /app
+WORKDIR /app
+# run the `install` command (or any other). This will also install the dependencies into `/app/.pixi`
+RUN pixi install
+# Create the shell-hook bash script to activate the environment
+RUN pixi shell-hook -e default > /shell-hook.sh
 
-# get conda installed
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
-    /bin/bash ~/miniconda.sh -b -p /opt/conda && \
-    rm ~/miniconda.sh && \
-    /opt/conda/bin/conda clean --all -f -y && \
-    ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
-    echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
-    apt-get update
+# extend the shell-hook script to run the command passed to the container
+RUN echo 'exec "$@"' >> /shell-hook.sh
 
-COPY environment.yaml .
-RUN /opt/conda/bin/conda config --add channels defaults && \
-    /opt/conda/bin/conda config --add channels bioconda && \
-    /opt/conda/bin/conda config --add channels conda-forge && \
-    /opt/conda/bin/conda config --add channels agbiome && \
-    /opt/conda/bin/conda install -c conda-forge mamba && \
-    mamba env update -n base -f environment.yaml && \
-    conda clean -afy
+FROM ubuntu:24.04 AS production
 
-# Install R packages with renv
-#RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.org'))"
-#RUN R -e "remotes::install_github('rstudio/renv@${RENV_VERSION}')"
+# Combine apt operations to reduce image layers and cleanup in the same layer
+# to minimize size
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    wget \
+    curl \
+    sudo \
+    zip \
+    unzip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 
-#WORKDIR /home/rstudio
-#COPY renv.lock renv.lock
-#COPY R_dependencies.R R_dependencies.R
-#RUN R -e "renv::restore()"
+# only copy the production environment into default container
+# please note that the "prefix" (path) needs to stay the same as in the build container
+COPY --from=build /app/.pixi/envs/default /app/.pixi/envs/default
+COPY --from=build /shell-hook.sh /shell-hook.sh
+
+# Add shell hook sourcing to multiple initialization files to ensure it's loaded
+RUN echo 'source /shell-hook.sh' >> /etc/bash.bashrc && \
+    echo 'source /shell-hook.sh' >> /root/.bashrc && \
+    echo 'source /shell-hook.sh' >> /etc/profile && \
+    mkdir -p /etc/profile.d && \
+    echo 'source /shell-hook.sh' > /etc/profile.d/pixi_env.sh
+
+
+WORKDIR /data
+
+# set the entrypoint to the shell-hook script (activate the environment and run the command)
+# no more pixi needed in the default container
+ENTRYPOINT ["/bin/bash", "/shell-hook.sh"]

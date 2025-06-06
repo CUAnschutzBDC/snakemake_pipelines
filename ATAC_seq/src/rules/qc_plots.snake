@@ -1,7 +1,7 @@
 def _get_diffbind_input(wildcards):
-    if wildcards.peak_caller == "macs2":
+    if wildcards.peak_caller == "macs3":
         return(expand(
-            wildcards.results + "/macs2_" + wildcards.trim_method +
+            wildcards.results + "/macs3_" + wildcards.trim_method +
             "_trim/{sample}_peaks.narrowPeak",
             sample = SAMPLES
             ))
@@ -18,8 +18,8 @@ def _get_diffbind_input(wildcards):
 # Make QC plots
 rule atac_qc:
     input:
-        "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.bam",
-        "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam"
+        mt = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_mt.txt",
+        dup = "{results}/bowtie2_{trim_method}_trim/{sample}_remove_dup.bam"
     output:
         complexity = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/complexity.pdf",
         frag_size = "{results}/atac_qc_{trim_method}_trim/{sample}/plots/frag_size.pdf",
@@ -31,17 +31,20 @@ rule atac_qc:
         lib_complexity = "{results}/atac_qc_{trim_method}_trim/{sample}/lib_complexity.rds",
         tss_score = "{results}/atac_qc_{trim_method}_trim/{sample}/tss_score.csv"
     params:
-        job_name         = "{sample}_atac_qc",
-        memory           = "select[mem>60] rusage[mem=60]",
         output_directory = "{results}/atac_qc_{trim_method}_trim/{sample}",
         output_plot_dir  = "{results}/atac_qc_{trim_method}_trim/{sample}/plots",
         seq_info         = SEQ_INFO,
         transcripts      = TRANSCRIPTS,
-        bsgenome         = BSGENOME
+        bsgenome         = BSGENOME,
+        mt_bam = os.path.join(RESULTS2, "bowtie2_{trim_method}_trim/{sample}_remove_mt.bam"),
+        dup_file = os.path.join(RESULTS2, "bowtie2_{trim_method}_trim/{sample}_remove_dup.bam")
     singularity:
        R_CONTAINER
-    log:
-        "{results}/logs/atac_qc/atac_qc_{sample}_{trim_method}_trim"
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/atac_qc/atac_qc_{wildcards.sample}_{wildcards.trim_method}_trim.out "
+            f"--error={wildcards.results}/logs/atac_qc/atac_qc_{wildcards.sample}_{wildcards.trim_method}_trim.err"
+        )
     script:
         "../scripts/atac_qc.R"
 
@@ -56,16 +59,17 @@ rule diffbind:
         db_obj    = "{results}/{peak_caller}_diffbind_{trim_method}_trim/db_obj.rds",
         count_obj = "{results}/{peak_caller}_diffbind_{trim_method}_trim/count_obj.rds"
     params:
-        job_name  = "diffbind",
-        memory    = "select[mem>60] rusage[mem=60]",
         samples   = SAMPLES,
         tissue    = diffbind_dict["tissue"],
         blacklist = BLACKLIST,
         out_dir   = "{results}/{peak_caller}_diffbind_{trim_method}_trim"
     singularity:
        R_CONTAINER
-    log:
-        "{results}/logs/diffbind/{peak_caller}_diffbind_{trim_method}_trim"
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/diffbind/diffbind_{wildcards.peak_caller}_{wildcards.trim_method}_trim.out "
+            f"--error={wildcards.results}/logs/diffbind/diffbind_{wildcards.peak_caller}_{wildcards.trim_method}_trim.err"
+        )
     script:
         "../scripts/DiffBind.R"
 
@@ -82,7 +86,10 @@ rule combine_tss:
         memory    = "select[mem>4] rusage[mem=4]"
     singularity:
        R_CONTAINER
-    log:
-        "{results}/logs/atac_qc_{trim_method}/combine_tss"
+    resources:
+        slurm_extra=lambda wildcards: (
+            f"--output={wildcards.results}/logs/combine_tss/combine_tss_{wildcards.trim_method}_trim.out "
+            f"--error={wildcards.results}/logs/combine_tss/combine_tss_{wildcards.trim_method}_trim.err"
+        )
     script:
         "../scripts/merge_tss.R"
